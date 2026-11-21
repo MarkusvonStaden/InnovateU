@@ -27,7 +27,8 @@ from .cdr import DEFINITIONS, Codec
 from .foxglove_client import OP_MESSAGE_DATA, OP_SERVICE_CALL, OP_SERVICE_RESPONSE, SUBPROTOCOL
 
 STATE_TOPIC, CMD_TOPIC, TEXT_TOPIC, PERSONS_TOPIC = '/lights_state', '/lights_cmd', '/advertisement', '/persons'
-STATE_CHANNEL, TEXT_CHANNEL, PERSONS_CHANNEL, STEER_CHANNEL = 1, 2, 3, 4
+STATE_CHANNEL, TEXT_CHANNEL, PERSONS_CHANNEL, STEER_CHANNEL, ODOM_CHANNEL = 1, 2, 3, 4, 5
+ODOM_TOPIC = '/wheel_odom'
 STEER_TOPIC, STOP_SERVICE, STOP_SERVICE_ID = '/steer_state', '/control_room/cancel_navigation', 100
 CAR_FRONT_M = 1.05  # base_link x of the front bumper
 KEYS = {'o': 0, 'l': 1, 'r': 2, 'h': 3}   # LightsCmd.MODE_*
@@ -60,6 +61,7 @@ class FakeCar:
         self.lock = threading.Lock()
         self.actual = indicator_cmd(0)
         self.steer_rad = 0.0
+        self.speed_mps = 0.0   # both wheels, + = forward
         self.stops = 0     # how often the stop service was called
         self.text_senders = set()
         self.server = serve(self._handler, host, port, subprotocols=[SUBPROTOCOL])
@@ -123,7 +125,9 @@ class FakeCar:
             {'id': PERSONS_CHANNEL, 'topic': PERSONS_TOPIC, 'encoding': 'cdr', 'schemaName': 'std_msgs/msg/String',
              'schemaEncoding': 'ros2msg', 'schema': 'string data'},
             {'id': STEER_CHANNEL, 'topic': STEER_TOPIC, 'encoding': 'cdr', 'schemaName': 'car_interfaces/msg/SteerState',
-             'schemaEncoding': 'ros2msg', 'schema': ros2msg_schema('car_interfaces/SteerState')}]}))
+             'schemaEncoding': 'ros2msg', 'schema': ros2msg_schema('car_interfaces/SteerState')},
+            {'id': ODOM_CHANNEL, 'topic': ODOM_TOPIC, 'encoding': 'cdr', 'schemaName': 'car_interfaces/msg/WheelOdom',
+             'schemaEncoding': 'ros2msg', 'schema': ros2msg_schema('car_interfaces/WheelOdom')}]}))
         ws.send(json.dumps({'op': 'advertiseServices', 'services': [
             {'id': STOP_SERVICE_ID, 'name': STOP_SERVICE, 'type': 'std_srvs/srv/Trigger',
              'request': {'encoding': 'cdr', 'schemaName': 'std_srvs/srv/Trigger_Request', 'schemaEncoding': 'ros2msg',
@@ -136,7 +140,10 @@ class FakeCar:
             while not done.wait(self.period):
                 payloads = {STATE_CHANNEL: self.state_payload(),
                             STEER_CHANNEL: self.codec.encode('car_interfaces/SteerState',
-                                                             {'angle_rad': self.steer_rad, 'calibrated': True})}
+                                                             {'angle_rad': self.steer_rad, 'calibrated': True}),
+                            ODOM_CHANNEL: self.codec.encode('car_interfaces/WheelOdom',
+                                                            {'left_speed_mps': self.speed_mps,
+                                                             'right_speed_mps': self.speed_mps})}
                 for sub_id, channel in list(subscriptions.items()):
                     if channel in payloads:
                         try:
@@ -216,10 +223,17 @@ def main():
         else:
             print('type l (left), r (right), h (hazard), o (off) and Enter; "a Some text" publishes /advertisement; '
                   '"p 2.5 -0.3" a person at x=2.5 m, y=-0.3 m (base_link) on /persons for 3 s; "s 0.3" steers '
-                  '(rad, + left); q quits')
+                  '(rad, + left); "v 0.5" drives at 0.5 m/s (/wheel_odom, - = backwards, v 0 stops); q quits')
             for line in sys.stdin:
                 if line.lower().startswith('a '):
                     car.say(line[2:].strip())
+                    continue
+                if line.lower().startswith('v '):
+                    try:
+                        car.speed_mps = float(line.split()[1])
+                        print(f'fake car: driving at {car.speed_mps:+.2f} m/s')
+                    except (ValueError, IndexError):
+                        print('v speed_in_m_per_s, e.g. v 0.5 (forward), v -0.3 (backwards), v 0 (stop)')
                     continue
                 if line.lower().startswith('s '):
                     try:

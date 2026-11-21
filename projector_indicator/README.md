@@ -43,6 +43,11 @@ uv run python -m projector_indicator.indicator --url ws://172.16.39.142:8765   #
   brands' trademarks); without one the card shows a plain badge in the brand's colours. `--text-topic` picks another
   topic ('' for none), `--text "..."` shows a card until the first message comes (and in `--demo`), `--text-s 10`
   hides a message after 10 s. With the fake car: type `a Porsche`.
+- **The advertisement stays on the ground** while the car drives, like a sign painted on the road: from `/wheel_odom`
+  (wheel speed) and the steering angle the car's motion is dead-reckoned ([ground.py](projector_indicator/ground.py)
+  `Odometry`), the card is pinned to its spot when it appears and slides towards the car (and turns when the car turns).
+  Once it has left the light patch it fades and comes back in front of the car. Without odometry it rides along.
+  `--odom-topic` picks another topic ('' for none). With the fake car: `v 0.5` drives at 0.5 m/s, `s 0.3` steers.
 - Persons walking into the car's way (`/persons`, `std_msgs/String` with JSON from the person detection: `x`, `y`
   in base_link metres, `zone` ahead / left / right) get a red dot on the ground under them (28 cm, soft rim). Each
   person is followed from message to message and smoothed (time constant 0.35 s), so the dot glides along; when the

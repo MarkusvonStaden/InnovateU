@@ -56,3 +56,30 @@ def corridor_contains(x, y, steer_rad, width_m=CAR_WIDTH_M, wheelbase_m=WHEELBAS
     angle = math.atan2(x, (r - y) * math.copysign(1, r))   # how far along the circle, from the rear axle
     return off <= width_m / 2 and 0 <= angle * abs(r) <= front_m + length_m and x >= front_m - 0.05
 
+
+class Odometry:
+    """Where the car is, by dead reckoning from the wheel speed (/wheel_odom) and the steering angle (bicycle model:
+    turn rate = speed * tan(steer) / wheelbase), in its own frame: (0, 0) heading 0 where it was first heard from.
+    Only the motion matters (things on the ground are pinned in this frame), so its drift over a few metres is harmless."""
+
+    def __init__(self, wheelbase_m=WHEELBASE_M, max_gap_s=0.5):
+        self.wheelbase_m, self.max_gap_s = wheelbase_m, max_gap_s
+        self.x = self.y = self.yaw = self.v = self.w = 0.0
+        self.at = None
+
+    def update(self, speed_mps, steer_rad, t):
+        w = speed_mps * math.tan(steer_rad) / self.wheelbase_m
+        if self.at is not None and 0 < t - self.at <= self.max_gap_s:   # after a longer gap: nothing known in between
+            dt = t - self.at
+            mid = self.yaw + w * dt / 2
+            self.x += speed_mps * math.cos(mid) * dt
+            self.y += speed_mps * math.sin(mid) * dt
+            self.yaw += w * dt
+        self.v, self.w, self.at = speed_mps, w, t
+
+    def pose(self, now, stale_s=1.0):
+        """For the page: position (m), heading (rad), speed (m/s) and turn rate (rad/s), or None when stale."""
+        if self.at is None or now - self.at > stale_s:
+            return None
+        return {'x': round(self.x, 4), 'y': round(self.y, 4), 'yaw': round(self.yaw, 5),
+                'v': round(self.v, 3), 'w': round(self.w, 4)}

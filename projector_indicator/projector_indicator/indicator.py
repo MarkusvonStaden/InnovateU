@@ -32,7 +32,7 @@ import urllib.request
 from .ads import LOGOS, advert
 from .cdr import Codec
 from .display_server import DisplayServer, local_ips
-from .ground import Ground, corridor_contains
+from .ground import Ground, Odometry, corridor_contains
 from .screens import monitors, open_fullscreen, pick_screen
 
 PAGE = pathlib.Path(__file__).with_name('indicator.html')
@@ -193,11 +193,12 @@ def run_car(display, stop, args, calibration=None):
     codec = Codec()
     ground = Ground(calibration, args.light_start_m, args.light_offset_m) if calibration else None
     steer = {'rad': None, 'raw': 0.0, 'at': None, 'glided': 0.0}
+    odometry = Odometry()
     indicator = Indicator(args.stale_s, text=args.text, text_s=args.text_s, persons_s=args.persons_s)
     type_name = TYPES[args.topic]
     shown = {}
     light = {'start_m': args.light_start_m, 'offset_m': args.light_offset_m}
-    topics = {args.topic} | {t for t in (args.text_topic, args.persons_topic, args.steer_topic) if t}
+    topics = {args.topic} | {t for t in (args.text_topic, args.persons_topic, args.steer_topic, args.odom_topic) if t}
 
     def on_message(topic, payload, _channel):
         if topic == args.topic:
@@ -206,6 +207,10 @@ def run_car(display, stop, args, calibration=None):
             indicator.on_persons(codec.decode('std_msgs/String', payload)['data'])
         elif topic == args.steer_topic:
             steer['raw'], steer['at'] = codec.decode('car_interfaces/SteerState', payload)['angle_rad'], time.monotonic()
+        elif topic == args.odom_topic:
+            wheels = codec.decode('car_interfaces/WheelOdom', payload)
+            odometry.update((wheels['left_speed_mps'] + wheels['right_speed_mps']) / 2,
+                            steer['raw'] if steer['at'] is not None else 0.0, time.monotonic())
         else:
             text = codec.decode('std_msgs/String', payload)['data']
             print(f'{topic}: {text!r}')
@@ -234,6 +239,8 @@ def run_car(display, stop, args, calibration=None):
             in_path = [p['id'] for p in state['persons'] if has_steer and corridor_contains(p['x'], p['y'], steer['rad'])]
             state['corridor'] = ({'steer_rad': round(steer['rad'], 3), 'blocked': bool(in_path)}
                                  if has_steer and ground else None)
+            # the car's motion: the page pins the advertisement to the ground with it
+            state['pose'] = odometry.pose(now) if state['live'] else None
             if state != shown:
                 if state['direction'] != shown.get('direction') or state['live'] != shown.get('live'):
                     print(f"indicator: {state['direction']}" + ('' if state['live'] else ' (no data from the car)'))
@@ -316,6 +323,9 @@ def main():
                    help="std_msgs/String with the detected persons as JSON: a soft red patch at their place ('' for none)")
     p.add_argument('--steer-topic', default='/steer_state',
                    help="car_interfaces/SteerState: the path the car is about to drive is drawn on the ground ('' for none)")
+    p.add_argument('--odom-topic', default='/wheel_odom',
+                   help="car_interfaces/WheelOdom: the advertisement stays put on the ground while the car drives ('' for "
+                        "none: it rides along)")
     p.add_argument('--persons-s', type=float, default=1.0,
                    help='fade a person out over this long when the detection no longer reports them')
     p.add_argument('--light-start-m', type=float, default=1.05,

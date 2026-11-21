@@ -42,6 +42,8 @@
   #ad { position: absolute; display: none; flex-direction: column; justify-content: space-between;
     container-type: size; }
   .with-ad #ad { display: flex; }
+  /* Moved by stickAd() every frame while the car drives: its own layer, so moving it does not redraw anything. */
+  #ad { will-change: transform; transform-origin: 50% 50%; transition: opacity 0.4s; }
   .calibrate #ad { outline: 6px dashed #4af; }
   #nav { height: 44cqh; display: flex; align-items: center; gap: 4cqh; padding: 0 5cqh; box-sizing: border-box;
     background: #0f7b3e; border-radius: 6cqh; color: #fff; overflow: hidden; }
@@ -218,6 +220,81 @@
     const near = [...g.footprint_mm].sort((a, b) => b[1] - a[1]).slice(0, 2);
     const ox = (near[0][0] + near[1][0]) / 2, oy = (near[0][1] + near[1][1]) / 2;
     return [ox - (person.y - (light.offset_m || 0)) * 1000, oy - (person.x - (light.start_m ?? 1.05)) * 1000];
+  }
+
+  // world (mm on the ground) -> base_link (metres), the inverse of toWorld
+  function toBase([wx, wy], g, light) {
+    const near = [...g.footprint_mm].sort((a, b) => b[1] - a[1]).slice(0, 2);
+    const ox = (near[0][0] + near[1][0]) / 2, oy = (near[0][1] + near[1][1]) / 2;
+    return { x: (light.start_m ?? 1.05) - (wy - oy) / 1000, y: (light.offset_m || 0) - (wx - ox) / 1000 };
+  }
+
+  // Is the point inside the convex polygon?
+  function inside(poly, [px, py]) {
+    let sign = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const [x1, y1] = poly[i], [x2, y2] = poly[(i + 1) % poly.length];
+      const c = Math.sign((x2 - x1) * (py - y1) - (y2 - y1) * (px - x1));
+      if (c && sign && c !== sign) return false;
+      sign = sign || c;
+    }
+    return true;
+  }
+
+  // The advertisement sticks to the ground like a sign painted on the road: when it appears it is pinned to the spot
+  // where it is drawn, in the car's odometry frame (state.pose: dead reckoning from /wheel_odom and the steering).
+  // While the car drives it stays on that spot, so it slides towards the car (and turns when the car turns). Once its
+  // middle has left the light patch it fades and comes back at its place in front of the car, pinned anew. Without
+  // odometry it rides along with the car as before.
+  // The pose comes ~15 times a second; in between the page carries it on with the car's speed and turn rate, and a
+  // new pose's difference to that is faded out over AD_TAU_MS instead of jumping.
+  const AD_TAU_MS = 120;
+  let odo = null;        // { pose, at, offset }: the last pose, when it came (page clock) and the difference to fade out
+  let pin = null;        // the card's middle in the odometry frame, the car's heading then and the card's place then
+  let pinnedAd = '', adFading = false, adRect = null;
+  function advance(p, dt) {
+    const yaw = p.yaw + p.w * dt / 2;
+    return { x: p.x + p.v * Math.cos(yaw) * dt, y: p.y + p.v * Math.sin(yaw) * dt, yaw: p.yaw + p.w * dt };
+  }
+  function carPose(now) {
+    if (!odo) return null;
+    const p = advance(odo.pose, Math.min(0.3, Math.max(0, now - odo.at) / 1000));
+    const k = Math.exp(-Math.max(0, now - odo.at) / AD_TAU_MS), o = odo.offset;
+    return { x: p.x + o.x * k, y: p.y + o.y * k, yaw: p.yaw + o.yaw * k };
+  }
+  function onPose(pose, now) {
+    if (!pose) { odo = null; pin = null; return; }
+    const last = odo && odo.pose;
+    if (last && last.x === pose.x && last.y === pose.y && last.yaw === pose.yaw && last.v === pose.v) return;
+    const was = carPose(now);
+    let offset = was ? { x: was.x - pose.x, y: was.y - pose.y, yaw: was.yaw - pose.yaw } : { x: 0, y: 0, yaw: 0 };
+    if (Math.hypot(offset.x, offset.y) > 0.5 || Math.abs(offset.yaw) > 0.3) offset = { x: 0, y: 0, yaw: 0 };  // a jump
+    odo = { pose, at: now, offset };
+  }
+  function pinAd(pose, g) {
+    const wx = adRect[0] + adRect[2] / 2, wy = adRect[1] + adRect[3] / 2;
+    const b = toBase([wx, wy], g, state.light || {}), c = Math.cos(pose.yaw), s = Math.sin(pose.yaw);
+    pin = { x: pose.x + c * b.x - s * b.y, y: pose.y + s * b.x + c * b.y, yaw: pose.yaw, wx, wy };
+    pinnedAd = shownAd;
+  }
+  function stickAd(now) {
+    const el = $('ad'), g = geometry && geometry.g, pose = state.ad && g && adRect ? carPose(now) : null;
+    if (!pose) {
+      pin = null;
+      if (el.style.transform) el.style.transform = '';
+      return;
+    }
+    if (!pin || pinnedAd !== shownAd) pinAd(pose, g);
+    const dx = pin.x - pose.x, dy = pin.y - pose.y, c = Math.cos(pose.yaw), s = Math.sin(pose.yaw);
+    const [wx, wy] = toWorld({ x: c * dx + s * dy, y: -s * dx + c * dy }, g, state.light || {});
+    // base_link -> world mirrors (x ahead = up, y left = left), so the car turning left turns the card clockwise
+    el.style.transform = `translate(${(wx - pin.wx).toFixed(1)}px, ${(wy - pin.wy).toFixed(1)}px) `
+      + `rotate(${(pose.yaw - pin.yaw).toFixed(4)}rad)`;
+    if (!adFading && !inside(g.footprint_mm, [wx, wy])) {   // driven past (or backed away): come back in front
+      adFading = true;
+      el.style.opacity = '0';
+      setTimeout(() => { pin = null; el.style.opacity = ''; adFading = false; }, 450);
+    }
   }
 
   // One red dot per tracked person (keyed by its id, so it glides instead of being redrawn).
@@ -400,7 +477,9 @@
     place(box, ...boxRect);
     const rowHeight = Math.min(boxRect[3] * 0.85, boxRect[2]);
     chevrons.style.height = rowHeight + 'px';
-    place($('ad'), ...adPlace(boxRect, rowHeight));
+    adRect = adPlace(boxRect, rowHeight);
+    place($('ad'), ...adRect);
+    pin = null;        // pinned anew at its (new) place
     place($('persons'), 0, 0, w, h);
     placeCorridor(g, w, h);
     geometry = { g, w, h };
@@ -432,6 +511,7 @@
     }
     showCorridor(g);
     showPersons(g);
+    onPose(state.pose, performance.now());
     if (!view.calibrate) return;        // the info line is only visible while calibrating
     const data = !connected ? 'no connection to the laptop' : !state.live ? 'no data from the car'
       : `car: ${state.direction}${state.failsafe ? ' (failsafe)' : ''}`;
@@ -468,6 +548,7 @@
       });
     }
     glideSteer(now);
+    stickAd(now);
     requestAnimationFrame(frame);
   }
 
