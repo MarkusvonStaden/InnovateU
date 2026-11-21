@@ -1,7 +1,7 @@
 Roter Faden: Autos sind ungenutzte Werbefläche.
 Sowohl dem Fahrer als auch andere Verkehrsteilnehmern können Werbungen angezeigt werden.
 
-Intro: 2.5m cars per Year. 2 m2 unused Adspace per Car. 
+Intro: BMW is selling 2.5m cars per Year. 2 m2 unused Adspace per Car. 
 
 Typical Journey of a BMW Driver: Next generation of AI-powered Cars
 
@@ -61,13 +61,6 @@ happening in the car right now. That's the most relevant ad there is.
 
 The car sees the pedestrian, and the projected path turns red. Ad space and safety, in one.
 
-**4 · Who's behind us?**
-
-**[Point to the rear screen: the number-plate job card.]**
-
-Behind us, a Porsche. The rear camera recognises it — so the rear window shows the right ad for a Porsche
-driver: a job pitch. Every road user gets their own message.
-
 **5 · The traffic jam**
 
 **[Driver:]** "Lass uns Pacman spielen."
@@ -102,7 +95,7 @@ A square metre of billboard costs about 16 euros a day. 2.5 million cars, two sq
 
 And it's already out there, driving around, unused.
 
-We turn every car into a medium. Thank you.
+We are PMS and we make the money flow in the right direction. Thank you.
 
 ---
 
