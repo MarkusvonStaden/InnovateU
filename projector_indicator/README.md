@@ -45,11 +45,12 @@ uv run python -m projector_indicator.indicator --url ws://172.16.39.142:8765   #
   hides a message after 10 s. With the fake car: type `a Porsche`.
 - **The dot game** (`/pacman`, `std_msgs/String` `enable` / `disable`, also on / off, true / false, or `std_msgs/Bool`):
   while it runs, nothing else is shown (no chevrons, advertisement, car path or person dots); `disable` brings
-  everything back. The car is the eater, a chomping disc at the edge of the light next to the car. Ahead of it rows
-  of dots lie on the ground between two neon walls, pinned in the odometry frame like the advertisement: driving over
-  them eats them (10 points, sparks); every 14th row is a big orb, power mode for 8 s (colours cycle, double points).
-  The score stands where the chevrons usually are. New rows keep coming along the car's heading, so the lane follows
-  its turns. Without `/wheel_odom` the car "drives" virtually. `--pacman` starts with it on (also with `--demo`),
+  everything back. The car is the eater, a yellow snapping jaw at the edge of the light next to the car. Ahead of it
+  a single trail of dots winds over the ground between two neon walls, pinned in the odometry frame like the
+  advertisement: steer along it, every dot that reaches the jaw is eaten (10 points, sparks), dots beside it are
+  missed. Every 14th dot is a big orb, power mode for 8 s (colours cycle, double points). The score stands where the
+  chevrons usually are. The trail keeps growing in front, winding around the car's heading, so it stays in the light.
+  Without `/wheel_odom` the car "drives" virtually straight on. `--pacman` starts with it on (also with `--demo`),
   `--pacman-topic` picks another topic. With the fake car: `g on`, `v 0.5`, `g off`.
 - **The advertisement stays on the ground** while the car drives, like a sign painted on the road: from `/wheel_odom`
   (wheel speed) and the steering angle the car's motion is dead-reckoned ([ground.py](projector_indicator/ground.py)
