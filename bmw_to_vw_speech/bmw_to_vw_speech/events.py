@@ -13,6 +13,8 @@ import urllib.request
 ADS = {
     "food": ("McDonalds", 'hunger, food, eating, snacks, restaurants ("Ich habe Hunger", "Wo gibt\'s hier Pizza?")'),
     "beer": ("Bayreuther", 'beer, wanting a beer, beer garden, "Feierabendbier" ("Jetzt ein kühles Bier!")'),
+    "coffee": ("Starbucks", 'coffee, wanting a coffee, café, latte, cappuccino, espresso, being tired and needing '
+                            'caffeine ("Ich brauch jetzt einen Kaffee", "Lust auf einen Latte?")'),
     "finance": ("Finanzberatung", "money, saving, debts, loans, rent, salary, pension, stocks, investing, "
                                   '"zu teuer" ("Das Benzin ist so teuer", "Ich bin pleite")'),
     "slow_car": ("Porsche", "the driver's OWN car is too slow, lacks power, wants to drive faster or overtake but "

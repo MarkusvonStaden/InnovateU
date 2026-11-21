@@ -6,7 +6,7 @@
 <title>Rear Buddy · Job</title>
 <!-- The intro cards for a kiosk browser window: empty asphalt while nothing happens, the card of the current scene
      otherwise (fancy_car: job intro; person_flirt: the --flirt-women demo gag). Its driver reads number plates all day, so the name is one.
-     Data from /pitch.json, live scene from /events. ?demo=<scene> shows that card all the time.
+     Data from /pitch.json, live scene and advertisement from /events. ?demo=<scene> (or ?demo=ad) shows it all the time.
      No web fonts or CDNs: the car's Wi-Fi has no internet. DIN ships with macOS (DIN Alternate) and Windows
      (Bahnschrift). -->
 <style>
@@ -93,6 +93,27 @@
   .qr[hidden] { display: none; }
   .noqr .cta { font-size: min(2.6vw, 4.6vh); max-width: 13ch; }
 
+  /* ---- the advertisement (same as the projection in front), when no card is due ----------------------------- */
+  .adview {
+    position: fixed; inset: 0; display: grid; align-content: center; justify-items: center; gap: 6vh;
+    padding: 8vh 8vw; visibility: hidden;
+  }
+  .adview.on { visibility: visible; }
+  .nav {
+    display: flex; align-items: center; gap: 3vw; padding: 2.4vh 4vw;
+    background: #0f7a3e; color: #fff; border-radius: 1.2vw;
+    font-weight: 700; font-size: min(9vw, 15vh); line-height: 1;
+  }
+  .nav svg { width: min(9vw, 15vh); height: min(9vw, 15vh); }
+  .brand { display: flex; align-items: center; gap: 3vw; }
+  .logo {
+    width: min(24vw, 36vh); aspect-ratio: 1; border-radius: 1.4vw; background: #fff;
+    display: grid; place-items: center; overflow: hidden; padding: 1.6vw;
+  }
+  .logo img { width: 100%; height: 100%; object-fit: contain; }
+  .logo b { font-size: min(10vw, 17vh); font-weight: 700; }
+  .ad-title { font-size: min(7.5vw, 13vh); font-weight: 700; line-height: 1.05; max-width: 12ch; }
+
   /* ---- one moment: the plate is stamped on ------------------------------------------------------------- */
   .on .plate { animation: stamp .55s cubic-bezier(.2, .9, .3, 1.2) both; }
   .on .about { animation: appear .4s .35s ease-out both; }
@@ -139,6 +160,12 @@
     </div>
   </section>
 </main>
+<section class="adview" id="adview" aria-live="polite">
+  <div class="nav"><svg viewBox="0 0 100 100" aria-hidden="true"><g id="ad-arrow">
+    <path d="M50 92 V22" stroke="#fff" stroke-width="13" stroke-linecap="round" fill="none"/>
+    <polygon points="50,4 80,38 20,38" fill="#fff"/></g></svg><span id="ad-dist"></span></div>
+  <div class="brand"><div class="logo" id="ad-logo"></div><p class="ad-title" id="ad-title"></p></div>
+</section>
 <script>
   // ?demo=fancy_car (or just ?demo) / ?demo=person_flirt shows that card all the time
   const params = new URLSearchParams(location.search);
@@ -180,12 +207,42 @@
 
   function show(scene) {
     const card = cards[scene];
-    if (!card) { shown = null; stage.classList.remove('on'); return; }
-    if (scene === shown) return;
+    if (!card) { shown = null; stage.classList.remove('on'); return false; }
+    if (scene === shown) return true;
     fill(scene, card);
     shown = scene;
     stage.classList.remove('on'); void stage.offsetWidth;    // restart the stamp for each new card
     stage.classList.add('on');
+    return true;
+  }
+
+  // The advertisement, the same card as the projection in front (ads.advert): only when no card is due.
+  const TURN_DEG = { straight: 0, 'slight-right': 45, right: 90, 'slight-left': -45, left: -90 };
+  let shownAd = '';
+  function showAd(ad) {
+    const view = el('adview'), key = JSON.stringify(ad || null);
+    if (!ad) { shownAd = ''; view.classList.remove('on'); return; }
+    if (key === shownAd) return;
+    shownAd = key;
+    el('ad-arrow').setAttribute('transform', `rotate(${TURN_DEG[ad.turn] || 0} 50 50)`);
+    el('ad-dist').textContent = ad.distance || '';
+    el('ad-title').textContent = ad.title || '';
+    const logo = el('ad-logo');
+    logo.style.background = ad.logo ? '#fff' : ad.color;
+    if (ad.logo) {
+      const img = new Image(); img.src = ad.logo; img.alt = ad.title || '';
+      logo.replaceChildren(img);
+    } else {
+      const b = document.createElement('b'); b.textContent = ad.initials || '?'; b.style.color = ad.accent;
+      logo.replaceChildren(b);
+    }
+    view.classList.remove('on'); void view.offsetWidth;
+    view.classList.add('on');
+  }
+
+  function render(st) {
+    const card = show(st.scene);
+    showAd(card ? null : st.ad);
   }
 
   Promise.all([
@@ -193,9 +250,11 @@
     fetch('/qr.svg').then(r => r.ok).catch(() => false),
   ]).then(([c, qr]) => {
     cards = c; hasQr = qr;
-    if (demo) { show(demo); return; }
+    if (demo === 'ad') { render({ scene: 'nobody', ad: { title: 'Starbucks Coffee', distance: '150 m',
+      turn: 'slight-left', logo: '/assets/starbucks.svg', color: '#00704a', accent: '#fff', initials: 'S' } }); return; }
+    if (demo) { render({ scene: demo }); return; }
     const events = new EventSource('/events');   // reconnects by itself
-    events.onmessage = e => { try { show(JSON.parse(e.data).scene); } catch (_) {} };
+    events.onmessage = e => { try { render(JSON.parse(e.data)); } catch (_) {} };
   });
 </script>
 </body>

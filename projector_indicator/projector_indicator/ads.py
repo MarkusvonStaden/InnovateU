@@ -5,7 +5,7 @@
 A message naming a known brand gets that brand's card; any other text becomes its own destination, with a direction
 and distance made up from the text (always the same for the same text, so it does not jump around).
 Logos: put the brand's official logo file into projector_indicator/logos/ (<brand>.svg or .png, e.g. porsche.svg,
-mcdonalds.svg; brands offer them in their press areas). Porsche, McDonald's, Bayreuther and Bitcoin are included.
+mcdonalds.svg; brands offer them in their press areas). Porsche, McDonald's, Bayreuther, Starbucks and Bitcoin are included.
 Without a file the card shows a plain badge in the brand's colours.
 """
 import hashlib
@@ -22,6 +22,8 @@ BRANDS = [
      'initials': 'M', 'color': '#da291c', 'accent': '#ffc72c', 'turn': 'left', 'distance_m': 250},
     {'brand': 'bayreuther', 'keys': ('bayreuther',), 'title': 'Bayreuther Brauhaus', 'initials': 'B',
      'color': '#0d2c6c', 'accent': '#ffffff', 'turn': 'straight', 'distance_m': 300},
+    {'brand': 'starbucks', 'keys': ('starbucks', 'starbuck', 'starbacks'), 'title': 'Starbucks Coffee',
+     'initials': 'S', 'color': '#00704a', 'accent': '#ffffff', 'turn': 'slight-left', 'distance_m': 150},
     {'brand': 'finanzberatung', 'keys': ('finanzberatung', 'finanz'), 'title': 'Finanzberatung', 'initials': '₿',
      'color': '#f7931a', 'accent': '#ffffff', 'turn': 'slight-right', 'distance_m': 450, 'logo': 'bitcoin'},
 ]

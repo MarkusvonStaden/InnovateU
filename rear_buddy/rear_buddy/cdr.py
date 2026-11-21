@@ -24,6 +24,7 @@ BYTE_TYPES = {'uint8', 'byte', 'char'}  # arrays of these are returned as bytes
 DEFINITIONS = {
     'builtin_interfaces/Time': 'int32 sec\nuint32 nanosec',
     'std_msgs/Header': 'builtin_interfaces/Time stamp\nstring frame_id',
+    'std_msgs/String': 'string data',
     'sensor_msgs/CompressedImage': 'std_msgs/Header header\nstring format\nuint8[] data',
     'sensor_msgs/Image': 'std_msgs/Header header\nuint32 height\nuint32 width\nstring encoding\nuint8 is_bigendian\n'
                          'uint32 step\nuint8[] data',

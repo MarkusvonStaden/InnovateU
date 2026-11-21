@@ -22,6 +22,7 @@ from .animations import render, to_rear_rgb
 from .car_state import CarState
 from .cdr import Codec, normalize, parse, schema_sections
 from .detector import Detector
+from . import ads
 from .display_server import DisplayServer
 from .kiosk import open_pitch_window
 from .fancy import make_fancy_check, make_person_check
@@ -146,6 +147,11 @@ def main():
     p.add_argument('--pitch-window', action='store_true',
                    help='kiosk browser window with the job intro (photo, name, QR) while a premium car is behind us')
     p.add_argument('--pitch-screen', type=int, help='screen for --pitch-window (default: the main screen)')
+    p.add_argument('--ad-url', default='ws://localhost:8765',
+                   help='bridge with the advertisement topic (the laptop bridge bmw_to_vw_speech publishes to)')
+    p.add_argument('--ad-topic', default='/advertisement',
+                   help="kiosk window: shows the same advertisement as the projection when no card is due ('' for none)")
+    p.add_argument('--ad-s', type=float, default=60.0, help='hide an advertisement after this many seconds (0: keep)')
     p.add_argument('--show', action='store_true', help='window with the camera, boxes, message and LED bar')
     p.add_argument('--no-leds', action='store_true', help='do not touch the car lights')
     p.add_argument('--brightness', type=float, default=0.5, help='rear LED brightness 0..1')
@@ -161,15 +167,18 @@ def main():
     rules.MIN_PERSON_AREA = args.min_person
     rules.PITCH_PEOPLE = args.pitch_people
 
-    display, browser = None, None
+    display, browser, ad_listener = None, None, None
     if args.display or args.pitch_window:
         display = DisplayServer(port=args.port, qr_url=QR_URL, qr_scenes=QR_SCENES,
                                cards={'fancy_car': PITCH_CARD, 'person_pitch': PITCH_CARD,
-                                      'person_flirt': FLIRT_CARD})
+                                      'person_flirt': FLIRT_CARD}, assets=ads.LOGOS)
         if args.display:
             print('rear display: open ' + ' or '.join(display.urls()) + ' on the phone (same Wi-Fi as this laptop)')
         if args.pitch_window:
             browser = open_pitch_window(display.port, args.pitch_screen)
+        if args.ad_topic:
+            ad_listener = ads.listen(args.ad_url, args.ad_topic,
+                                     lambda text: display.set_ad(ads.advert(text), args.ad_s), log=lambda *_: None)
 
     client = FoxgloveClient(args.url, {args.topic, WHEELS, BATTERY}, on_message=lambda *a: runner.on_message(*a))
     runner = Runner(Detector(args.model), make_fancy_check(args.fancy), Director(flirt=args.flirt), args.topic,
@@ -202,6 +211,8 @@ def main():
             runner.lights_off()
             time.sleep(0.05)
         client.close()
+        if ad_listener:
+            ad_listener.close()
         if browser:
             browser.terminate()
         if display:

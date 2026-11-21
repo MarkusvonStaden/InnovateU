@@ -25,6 +25,7 @@ import numpy as np
 
 from .animations import render
 from .detector import Detector
+from . import ads
 from .display_server import DisplayServer
 from .kiosk import open_pitch_window
 from .led_preview import bar_image
@@ -113,6 +114,11 @@ def main():
     p.add_argument('--pitch-window', action='store_true',
                    help='kiosk browser window with the job intro (photo, name, QR) while a premium car is behind us')
     p.add_argument('--pitch-screen', type=int, help='screen for --pitch-window (default: the main screen)')
+    p.add_argument('--ad-url', default='ws://localhost:8765',
+                   help='bridge with the advertisement topic (the laptop bridge bmw_to_vw_speech publishes to)')
+    p.add_argument('--ad-topic', default='/advertisement',
+                   help="kiosk window: shows the same advertisement as the projection when no card is due ('' for none)")
+    p.add_argument('--ad-s', type=float, default=60.0, help='hide an advertisement after this many seconds (0: keep)')
     args = p.parse_args()
     rules.MIN_PERSON_AREA = args.min_person
     rules.PITCH_PEOPLE = args.pitch_people
@@ -122,17 +128,20 @@ def main():
     person_check = make_person_check(args.suit_pitch, args.flirt_women)
     on_reaction = print_reaction
     server = None
-    browser = None
+    browser, ad_listener = None, None
     if args.display or args.pitch_window:
         server = DisplayServer(port=args.port, qr_url=QR_URL, qr_scenes=QR_SCENES,
                                cards={'fancy_car': PITCH_CARD, 'person_pitch': PITCH_CARD,
-                                      'person_flirt': FLIRT_CARD})
+                                      'person_flirt': FLIRT_CARD}, assets=ads.LOGOS)
         if not server.qr:
             print('no QR code on the display: pip install segno')
         if args.display:
             print('rear display: open ' + ' or '.join(server.urls()) + ' on the phone (same Wi-Fi as this laptop)')
         if args.pitch_window:
             browser = open_pitch_window(server.port, args.pitch_screen)
+        if args.ad_topic:
+            ad_listener = ads.listen(args.ad_url, args.ad_topic,
+                                     lambda text: server.set_ad(ads.advert(text), args.ad_s), log=lambda *_: None)
 
         def on_reaction(r):
             print_reaction(r)
@@ -149,6 +158,8 @@ def main():
     except KeyboardInterrupt:
         pass
     cv2.destroyAllWindows()
+    if ad_listener:
+        ad_listener.close()
     if browser:
         browser.terminate()
     if server:

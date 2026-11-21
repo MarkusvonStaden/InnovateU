@@ -346,7 +346,7 @@ def main():
     p.add_argument('--text', default='', help='text to show until the first message comes (and in demo mode)')
     p.add_argument('--text-s', type=float, default=0.0, help='hide a message after this many seconds (0: keep it)')
     p.add_argument('--local-url', default='',
-                   help='a second bridge (e.g. ws://localhost:8765 on this laptop) for --text-topic and --persons-topic')
+                   help='a second bridge (e.g. ws://localhost:8765 on this laptop) for --text-topic, --persons-topic and --pacman-topic')
     p.add_argument('--person-dots', action='store_true',
                    help='draw a red dot under each detected person (off: persons only turn the path red)')
     p.add_argument('--persons-topic', default='/persons',

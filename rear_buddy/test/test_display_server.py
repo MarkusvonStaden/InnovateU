@@ -27,7 +27,8 @@ def test_page_is_served(server):
 def test_state_follows_show(server):
     assert json.loads(get(server, '/state')[2])['scene'] == 'nobody'
     server.show({'scene': 'cyclist_flirt', 'text': 'Coffee?', 'animation': 'hearts', 'extra': 'ignored'})
-    assert json.loads(get(server, '/state')[2]) == {'scene': 'cyclist_flirt', 'text': 'Coffee?', 'animation': 'hearts', 'qr': False}
+    assert json.loads(get(server, '/state')[2]) == {'scene': 'cyclist_flirt', 'text': 'Coffee?', 'animation': 'hearts', 'qr': False,
+                                                    'ad': None}
 
 
 def test_events_stream_current_then_new_messages(server):
@@ -41,7 +42,7 @@ def test_events_stream_current_then_new_messages(server):
 
         assert next_event()['scene'] == 'nobody'
         server.show({'scene': 'car', 'text': 'Hello!', 'animation': 'breathing'})
-        assert next_event() == {'scene': 'car', 'text': 'Hello!', 'animation': 'breathing', 'qr': False}
+        assert next_event() == {'scene': 'car', 'text': 'Hello!', 'animation': 'breathing', 'qr': False, 'ad': None}
 
 
 def test_unknown_path_is_404(server):
@@ -94,5 +95,31 @@ def test_pitch_without_photo_shows_initials_flag():
     s = DisplayServer(host='127.0.0.1', port=0, cards={'fancy_car': {'first_name': 'Sascha', 'photo': 'nope.jpg'}})
     try:
         assert s.cards['fancy_car']['photo'] is False and s.photos['fancy_car'] is None
+    finally:
+        s.close()
+
+
+def test_advertisement_card_and_logo():
+    import json as _json
+    import time as _time
+    import urllib.request as _url
+    from rear_buddy import ads
+    s = DisplayServer(host='127.0.0.1', port=0, assets=ads.LOGOS)
+    try:
+        s.show({'scene': 'car', 'text': 'hi', 'animation': 'breathing'})
+        s.set_ad(ads.advert('Starbucks'), hold_s=0.2)
+        assert s.state['ad']['title'] == 'Starbucks Coffee' and s.state['scene'] == 'car'
+        s.show({'scene': 'nobody', 'text': '', 'animation': 'scanner'})   # a new scene keeps the ad
+        assert s.state['ad']['brand'] == 'starbucks'
+        base = f'http://127.0.0.1:{s.port}'
+        assert _url.urlopen(base + s.state['ad']['logo']).read().startswith(b'<?xml')
+        try:
+            _url.urlopen(base + '/assets/..%2Fads.py')
+            assert False, 'must not serve files outside the logos folder'
+        except Exception:
+            pass
+        _time.sleep(0.4)
+        assert s.state['ad'] is None    # gone after hold_s
+        assert _json.loads(_url.urlopen(base + '/state').read())['ad'] is None
     finally:
         s.close()
