@@ -43,9 +43,10 @@ def test_modes_map_to_directions(mode, direction):
 def test_dark_until_the_car_is_heard_and_when_it_goes_quiet():
     clock = Clock()
     ind = Indicator(stale_s=3.0, clock=clock)
-    assert ind.state() == {'direction': 'off', 'period_ms': 500, 'live': False, 'failsafe': False, 'text': '', 'persons': []}
+    assert ind.state() == {'direction': 'off', 'period_ms': 500, 'live': False, 'failsafe': False, 'text': '', 'text_id': 0,
+                           'persons': []}
     ind.on_lights(lights_state(1, 700))
-    assert ind.state() == {'direction': 'left', 'period_ms': 700, 'live': True, 'failsafe': False, 'text': '', 'persons': []}
+    assert ind.state() == {'direction': 'left', 'period_ms': 700, 'live': True, 'failsafe': False, 'text': '', 'text_id': 0, 'persons': []}
     clock.t += 3.5
     assert ind.state()['direction'] == 'off' and not ind.state()['live']
 
@@ -332,3 +333,16 @@ def test_mac_screens_to_top_left_coordinates():
     assert screens == [Screen(0, 0, 0, 1728, 1117, True), Screen(1, 1728, 0, 1920, 1080, False)]
     assert pick_screen(screens, None).index == 1
     assert _mac_monitors('') == []
+
+
+def test_each_advertisement_message_gets_a_new_id():
+    ind = Indicator(3.0)
+    first = ind.state()['text_id']
+    ind.on_text('McDonalds')
+    ind.on_text('McDonalds')                 # the same ad again is a new message: shown again
+    assert ind.state()['text_id'] == first + 2
+
+
+def test_person_dots_only_on_request():
+    assert 'dots=1' not in page_url(8081, 90, False, False)
+    assert page_url(8081, 90, False, False, person_dots=True).endswith('dots=1')

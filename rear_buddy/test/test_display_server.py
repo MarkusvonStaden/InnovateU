@@ -78,20 +78,21 @@ def test_pitch_page_details_and_photo(tmp_path):
     photo.write_bytes(b'\xff\xd8fake')
     card = {'greeting': 'Hi, ich bin', 'first_name': 'Sascha', 'age': '29', 'role': 'Softwareentwickler',
             'skills': ['Python'], 'photo': str(photo)}
-    s = DisplayServer(host='127.0.0.1', port=0, pitch=card)
+    s = DisplayServer(host='127.0.0.1', port=0, cards={'fancy_car': card, 'person_flirt': {'first_name': 'Markus'}})
     try:
         base = f'http://127.0.0.1:{s.port}'
         details = _json.loads(_url.urlopen(base + '/pitch.json').read())
-        assert details['first_name'] == 'Sascha' and details['photo'] is True
-        assert _url.urlopen(base + '/photo').read() == b'\xff\xd8fake'
+        assert details['fancy_car']['first_name'] == 'Sascha' and details['fancy_car']['photo'] is True
+        assert details['person_flirt'] == {'first_name': 'Markus', 'photo': False}
+        assert _url.urlopen(base + '/photo/fancy_car').read() == b'\xff\xd8fake'
         assert b'fancy_car' in _url.urlopen(base + '/pitch').read()
     finally:
         s.close()
 
 
 def test_pitch_without_photo_shows_initials_flag():
-    s = DisplayServer(host='127.0.0.1', port=0, pitch={'first_name': 'Sascha', 'photo': 'does-not-exist.jpg'})
+    s = DisplayServer(host='127.0.0.1', port=0, cards={'fancy_car': {'first_name': 'Sascha', 'photo': 'nope.jpg'}})
     try:
-        assert s.pitch['photo'] is False and s.photo is None
+        assert s.cards['fancy_car']['photo'] is False and s.photos['fancy_car'] is None
     finally:
         s.close()

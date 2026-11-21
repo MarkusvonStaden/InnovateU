@@ -46,6 +46,7 @@ def parse_args(argv=None):
     p.add_argument("--no-bridge", action="store_true", help="console only, publish nothing")
     p.add_argument("--swear-topic", default="/Swearword")
     p.add_argument("--ad-topic", default="/advertisement")
+    p.add_argument("--pacman-topic", default="/pacman", help='"Pacman-Modus an/aus" -> enable / disable')
     p.add_argument("--input-device", help="microphone (index or name part, see --list-devices)")
     p.add_argument("--output-device", help="speaker (index or name part)")
     p.add_argument("--list-devices", action="store_true")
@@ -73,7 +74,7 @@ class App:
             wait_s = 3.0 if args.once else 0.0
             publish = lambda topic, value: bridge.publish(topic, encode_string(value), wait_s=wait_s)  # noqa: E731
         self.events = events.Events(publish, args.swear_topic, args.ad_topic,
-                                    log=lambda m: print(f"\r{m}", flush=True))
+                                    log=lambda m: print(f"\r{m}", flush=True), pacman_topic=args.pacman_topic)
         self.history = realtime.History()
         self.speaker = None
         self.mic = None
@@ -205,6 +206,7 @@ async def run(args):
             bridge = FoxglovePublisher(args.bridge, log=lambda m: print(f"\r{m}", flush=True)).start()
             bridge.advertise(args.swear_topic)
             bridge.advertise(args.ad_topic)
+            bridge.advertise(args.pacman_topic)
         app = App(args, ws, key, bridge)
         receiver = asyncio.create_task(app.receive())
         try:

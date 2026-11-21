@@ -39,12 +39,24 @@ PITCH_CARD = {
     'qr_label': 'LinkedIn',
 }
 
-try:  # local, git-ignored overrides with your real details
-    from .profile_local import FLIRT_PROFILE, PROFILE, QR_URL  # noqa: F401,F811
-except ImportError:
-    pass
-try:  # separately, so older profile_local.py files without it keep working
-    from .profile_local import PITCH_CARD  # noqa: F401,F811
+# Demo gag only (--flirt-women): the dating "ad" in the kiosk window when the person check sees a woman behind us.
+FLIRT_CARD = {
+    'greeting': "Hi, I'm",
+    'first_name': 'Alex',
+    'age': '',
+    'status': 'Single',
+    'role': 'Software Developer',
+    'skills': ['Good coffee', 'Bad jokes', 'Parks well'],
+    'photo': '',
+    'cta': 'Coffee? Just wave.',
+    'qr': False,
+}
+
+try:  # local, git-ignored overrides with your real details; each name on its own, all are optional
+    from . import profile_local as _local
+    for _name in ('PROFILE', 'QR_URL', 'FLIRT_PROFILE', 'PITCH_CARD', 'FLIRT_CARD'):
+        if hasattr(_local, _name):
+            globals()[_name] = getattr(_local, _name)
 except ImportError:
     pass
 
@@ -104,6 +116,11 @@ MESSAGES = {
         'This car is driven by AI. {flirt_name} is single.\nCoffee? {flirt_name} is buying.',
         'Single, friendly, great sense of humour, parks well.\nCoffee with {flirt_name}?',
     ],
+    # Demo gag only (--flirt-women): the person check sees a woman behind us. The kiosk window shows FLIRT_CARD.
+    'person_flirt': [
+        "Hi! I'm {flirt_name}. Single, friendly and not a creep.\nCoffee at the next red light?",
+        '{flirt_name} is single and buys the coffee.\nJust wave.',
+    ],
     'pedestrian': [
         'Hi there! Wave and I will wave back with my lights.',
         'Walking is faster than this traffic. Good choice.',
@@ -122,6 +139,7 @@ ANIMATIONS = {
     'stuck': 'sleepy',
     'cyclist': 'green_wave',
     'cyclist_flirt': 'hearts',
+    'person_flirt': 'hearts',
     'pedestrian': 'rainbow',
     'nobody': 'scanner',
 }

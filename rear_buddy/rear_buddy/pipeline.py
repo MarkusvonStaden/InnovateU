@@ -6,12 +6,19 @@ from .detector import closest_vehicle
 from .rules import classify
 
 
-def analyse(frame, detector, car_check):
+PERSON_SCENES = {'suit': 'person_pitch', 'woman': 'person_flirt'}  # person check answer -> scene
+
+
+def analyse(frame, detector, car_check, person_check=None):
+    """person_check (demo gags): (frame, person) -> 'suit' turns 'pedestrian' into 'person_pitch' (job pitch),
+    'woman' into 'person_flirt'."""
     detections = detector(frame)
     car = closest_vehicle(detections)
     if car is not None:
         car.tier, car.brand = car_check(frame, car)
     scene, subject = classify(detections)
+    if scene == 'pedestrian' and person_check is not None:
+        scene = PERSON_SCENES.get(person_check(frame, subject), scene)
     return scene, subject, detections
 
 

@@ -2,6 +2,7 @@
 
 - The driver insults someone          -> console FCK_PROJECTION, publish the swear words on the swearword topic
 - Talk that fits an ad category        -> publish the advertiser (see ADS) on the advertisement topic
+- "Pacman-Modus an" / "aus"            -> publish enable / disable on the pacman topic
 """
 
 import json
@@ -22,7 +23,7 @@ URL = "https://api.openai.com/v1/chat/completions"
 
 PROMPT = """\
 You classify one sentence a car driver just said (transcribed speech, mostly German). Answer with JSON only:
-{{"insult": bool, "swearwords": [str], "ads": [str]}}
+{{"insult": bool, "swearwords": [str], "ads": [str], "pacman": "enable" | "disable" | null}}
 
 insult: the driver insults, curses at or swears at another person (another driver, cyclist, pedestrian, passenger),
   e.g. "du Penner", "Idiot", "Arsch", "Trottel", "Vollpfosten", "fahr doch, du Schnecke". Mild everyday swearing that
@@ -30,6 +31,12 @@ insult: the driver insults, curses at or swears at another person (another drive
 swearwords: the insulting/swear words exactly as said, empty if none.
 ads: every category below the sentence is about, empty if none. Only these keys:
 {categories}
+pacman: someone wants the Pacman game/mode on ("enable") or off ("disable"). enable: "Pacman-Modus an", "Starte
+  Pacman", "Aktiviere den Pacman Modus", "Ich will Pacman spielen", "Lass uns Pacman spielen", "Pacman bitte",
+  "Zeit für Pacman". disable: "Pacman aus", "Beende den Pacman-Modus", "Schluss mit Pacman", "Genug Pacman gespielt",
+  "Ich will nicht mehr Pacman spielen". Also when the transcription mangles the word ("Pac-Man", "Packman", "Pekmen",
+  "Pacmen"). null when Pacman is only talked about without wanting it on or off ("Pacman war früher mein
+  Lieblingsspiel", "Kennst du Pacman?"), or not mentioned at all.
 """
 
 
@@ -59,6 +66,7 @@ def parse(content: str) -> dict:
         "insult": bool(data.get("insult")),
         "swearwords": [str(w) for w in data.get("swearwords") or []],
         "ads": [a for a in ADS if a in (data.get("ads") or [])],  # known keys only, fixed order
+        "pacman": data.get("pacman") if data.get("pacman") in ("enable", "disable") else None,
     }
 
 
@@ -70,8 +78,10 @@ def fck_projection() -> str:
 class Events:
     """Turns a classification into console output and topic messages (publish may be None: console only)."""
 
-    def __init__(self, publish=None, swear_topic="/Swearword", ad_topic="/advertisement", log=print):
+    def __init__(self, publish=None, swear_topic="/Swearword", ad_topic="/advertisement", log=print,
+                 pacman_topic="/pacman"):
         self.publish, self.swear_topic, self.ad_topic, self.log = publish, swear_topic, ad_topic, log
+        self.pacman_topic = pacman_topic
 
     def messages(self, text: str, result: dict) -> list[tuple[str, str]]:
         """(topic, value) pairs for one classified sentence."""
@@ -80,12 +90,16 @@ class Events:
             out.append((self.swear_topic, ", ".join(result["swearwords"]) or text))
         for ad in result["ads"]:
             out.append((self.ad_topic, ADS[ad][0]))
+        if result.get("pacman"):
+            out.append((self.pacman_topic, result["pacman"]))
         return out
 
     def handle(self, text: str, result: dict) -> None:
         for topic, value in self.messages(text, result):
             if topic == self.swear_topic:
                 self.log(f"{fck_projection()}  ({value})")
+            elif topic == self.pacman_topic:
+                self.log(f"👾 Pacman {'on' if value == 'enable' else 'off'}")
             else:
                 self.log(f"📢 {value}")
             if self.publish:

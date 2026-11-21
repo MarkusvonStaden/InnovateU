@@ -14,7 +14,7 @@ from websockets.sync.server import serve
 from rear_buddy.bridge import LIGHTS, Runner
 from rear_buddy.cdr import Codec
 from rear_buddy.detector import Detection
-from rear_buddy.foxglove_client import SUBPROTOCOL, FoxgloveClient
+from rear_buddy.foxglove_client import SUBPROTOCOLS, FoxgloveClient
 from rear_buddy.rules import Director
 
 CAMERA = '/back_camera/image/compressed'
@@ -33,7 +33,7 @@ class FakeBridge:
 
     def __init__(self):
         self.received = queue.Queue()  # everything the client sends, decoded
-        self.server = serve(self.handler, '127.0.0.1', 0, subprotocols=[SUBPROTOCOL])
+        self.server = serve(self.handler, '127.0.0.1', 0, subprotocols=SUBPROTOCOLS)
         self.url = f'ws://127.0.0.1:{self.server.socket.getsockname()[1]}'
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 

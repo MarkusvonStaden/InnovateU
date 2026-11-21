@@ -24,10 +24,10 @@ from .cdr import Codec, normalize, parse, schema_sections
 from .detector import Detector
 from .display_server import DisplayServer
 from .kiosk import open_pitch_window
-from .fancy import make_fancy_check
+from .fancy import make_fancy_check, make_person_check
 from .foxglove_client import FoxgloveClient
 from .images import COMPRESSED, to_bgr
-from .messages import PITCH_CARD, QR_SCENES, QR_URL
+from .messages import FLIRT_CARD, PITCH_CARD, QR_SCENES, QR_URL
 from .offline import print_reaction, with_leds
 from .pipeline import analyse, draw
 from . import rules
@@ -46,8 +46,9 @@ class Runner:
 
     def __init__(self, detector, fancy, director, camera_topic, publish=None, display=None, show=False,
                  brightness=0.5, front='white', reverse=False, detect_hz=2.0, log=print, clock=time.monotonic,
-                 on_reaction=print_reaction):
+                 on_reaction=print_reaction, person_check=None):
         self.detector, self.fancy, self.director = detector, fancy, director
+        self.person_check = person_check  # demo gag, --flirt-women
         self.camera_topic, self.publish, self.display, self.show = camera_topic, publish, display, show
         self.brightness, self.front, self.reverse = brightness, FRONT[front], reverse
         self.detect_every = 1.0 / detect_hz
@@ -112,7 +113,7 @@ class Runner:
         if frame is None:
             self.log(f'skipping an image from {self.camera_topic}: {problem}')
             return
-        scene, subject, dets = analyse(frame, self.detector, self.fancy)
+        scene, subject, dets = analyse(frame, self.detector, self.fancy, self.person_check)
         reaction = self.director.update(scene, self.car.stopped_s(), self.car.battery_v())
         if reaction:
             self.on_reaction(reaction)
@@ -133,11 +134,15 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--url', default='ws://10.42.0.1:8765', help="the car's Foxglove bridge")
     p.add_argument('--topic', default='/back_camera/image/compressed', help='camera topic (CompressedImage)')
-    p.add_argument('--fancy', default='clip', choices=['clip', 'always', 'budget', 'never'],
-                   help='car brand check: clip (Porsche/Audi/BMW -> job pitch, Toyota/small -> old is gold) or a fixed answer')
+    p.add_argument('--fancy', default='openai', choices=['openai', 'clip', 'always', 'budget', 'never'],
+                   help='car brand check: openai (vision model, needs internet) or clip (offline): Porsche/Audi/BMW -> job pitch, Toyota/small -> old is gold; or a fixed answer')
     p.add_argument('--flirt', action='store_true', help='demo only: cyclists get the flirt texts')
     p.add_argument('--display', action='store_true', help='serve the rear display page for a phone')
     p.add_argument('--port', type=int, default=8080, help='port of the rear display page')
+    p.add_argument('--suit-pitch', action=argparse.BooleanOptionalAction, default=True,
+                   help='a person in a suit behind the car gets the job pitch (OpenAI, needs internet)')
+    p.add_argument('--flirt-women', action=argparse.BooleanOptionalAction, default=True,
+                   help='demo gag: when OpenAI sees a woman behind the car, show the FLIRT_CARD ad (needs internet)')
     p.add_argument('--pitch-window', action='store_true',
                    help='kiosk browser window with the job intro (photo, name, QR) while a premium car is behind us')
     p.add_argument('--pitch-screen', type=int, help='screen for --pitch-window (default: the main screen)')
@@ -158,7 +163,9 @@ def main():
 
     display, browser = None, None
     if args.display or args.pitch_window:
-        display = DisplayServer(port=args.port, qr_url=QR_URL, qr_scenes=QR_SCENES, pitch=PITCH_CARD)
+        display = DisplayServer(port=args.port, qr_url=QR_URL, qr_scenes=QR_SCENES,
+                               cards={'fancy_car': PITCH_CARD, 'person_pitch': PITCH_CARD,
+                                      'person_flirt': FLIRT_CARD})
         if args.display:
             print('rear display: open ' + ' or '.join(display.urls()) + ' on the phone (same Wi-Fi as this laptop)')
         if args.pitch_window:
@@ -167,7 +174,8 @@ def main():
     client = FoxgloveClient(args.url, {args.topic, WHEELS, BATTERY}, on_message=lambda *a: runner.on_message(*a))
     runner = Runner(Detector(args.model), make_fancy_check(args.fancy), Director(flirt=args.flirt), args.topic,
                     publish=None if args.no_leds else client.publish, display=display, show=args.show,
-                    brightness=args.brightness, front=args.front, reverse=args.reverse, detect_hz=args.detect_hz)
+                    brightness=args.brightness, front=args.front, reverse=args.reverse, detect_hz=args.detect_hz,
+                    person_check=make_person_check(args.suit_pitch, args.flirt_women))
     if not args.no_leds:
         client.advertise(LIGHTS, 'car_interfaces/msg/LightsCmd')
     print(f'connecting to {args.url} (laptop on the BITT Wi-Fi?) ... Ctrl-C to stop')

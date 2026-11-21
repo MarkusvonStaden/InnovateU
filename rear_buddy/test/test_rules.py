@@ -162,3 +162,29 @@ def test_pitch_people_gives_people_the_job_pitch_with_qr():
     assert r.scene == 'person_pitch' and r.animation == 'gold_shine' and 'person_pitch' in QR_SCENES
     assert '{' not in r.text
     assert d.update('cyclist').scene == 'cyclist' and d.update('budget_car').scene == 'budget_car'
+
+
+def test_person_check_scenes():
+    from rear_buddy.detector import Detection
+    from rear_buddy.pipeline import analyse
+    person = Detection('person', 0.9, (100, 50, 300, 450), 0.3)
+    detector = lambda frame: [person]  # noqa: E731
+    no_car = lambda frame, d: (None, None)  # noqa: E731
+    assert analyse(None, detector, no_car)[0] == 'pedestrian'
+    assert analyse(None, detector, no_car, person_check=lambda f, d: None)[0] == 'pedestrian'
+    assert analyse(None, detector, no_car, person_check=lambda f, d: 'suit')[0] == 'person_pitch'
+    assert analyse(None, detector, no_car, person_check=lambda f, d: 'woman')[0] == 'person_flirt'
+    assert Director().update('person_flirt').animation == 'hearts'
+    assert Director().update('person_pitch').animation == 'gold_shine'
+
+
+def test_person_answer_parsing():
+    from rear_buddy.fancy import parse_person
+    assert parse_person('{"suit": true, "woman": true, "confidence": 0.9}') == 'suit'   # job pitch wins
+    assert parse_person('{"suit": false, "woman": true, "confidence": 0.9}') == 'woman'
+    assert parse_person('{"suit": true, "woman": false, "confidence": 0.9}') == 'suit'
+    assert parse_person('{"suit": true, "woman": true, "confidence": 0.5}') is None     # unsure
+    assert parse_person('{"suit": null, "woman": null, "confidence": 0}') is None
+    assert parse_person("I can't help with that.") is None
+    assert parse_person('{"suit": true, "woman": true, "confidence": 0.9}', suit=False) == 'woman'
+    assert parse_person('{"suit": false, "woman": true, "confidence": 0.9}', woman=False) is None

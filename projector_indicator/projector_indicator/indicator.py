@@ -50,11 +50,13 @@ class Indicator:
         self.direction, self.period_ms, self.failsafe = 'off', 500, False
         self.last = None
         self.text, self.text_s, self.text_since = text, text_s, clock()
+        self.text_id = 0   # counts the messages: the page shows each advertisement only once (see stickAd)
         self.tracks = PersonTracks(hold_s=persons_s, clock=clock)
 
     def on_text(self, text):
         """A new message for the projection (the advertisement); '' clears it."""
         self.text, self.text_since = text.strip(), self.clock()
+        self.text_id += 1
 
     def on_persons(self, text):
         """A /persons message (JSON, see parse_persons). A broken one is ignored, the last good one ages out."""
@@ -80,7 +82,7 @@ class Indicator:
         fresh = self.text_s <= 0 or self.clock() - self.text_since <= self.text_s
         return {'direction': self.direction if live else 'off', 'period_ms': self.period_ms,
                 'live': live, 'failsafe': self.failsafe and live, 'text': self.text if connected and fresh else '',
-                'persons': self.tracks.current() if connected else []}
+                'text_id': self.text_id, 'persons': self.tracks.current() if connected else []}
 
 
 ZONES = ('ahead', 'left', 'right')
@@ -145,7 +147,7 @@ def parse_persons(text, max_persons=5):
 GROUND_KEYS = ('world_to_screen', 'size_mm', 'footprint_mm', 'floor_mm', 'box_mm')
 
 
-def page_query(rotate, mirror, calibrate, keystone=0.0, calibration=None):
+def page_query(rotate, mirror, calibrate, keystone=0.0, calibration=None, person_dots=False):
     """calibration: measured by projector_cal.py (the ground in mm and how it maps onto the screen); it replaces
     rotate, mirror and keystone."""
     if calibration:
@@ -158,11 +160,13 @@ def page_query(rotate, mirror, calibrate, keystone=0.0, calibration=None):
             query['keystone'] = round(keystone, 2)
     if calibrate:
         query['calibrate'] = 1
+    if person_dots:
+        query['dots'] = 1
     return '?' + urllib.parse.urlencode(query, safe=',')
 
 
-def page_url(port, rotate, mirror, calibrate, keystone=0.0, calibration=None):
-    return f'http://127.0.0.1:{port}/' + page_query(rotate, mirror, calibrate, keystone, calibration)
+def page_url(port, rotate, mirror, calibrate, keystone=0.0, calibration=None, person_dots=False):
+    return f'http://127.0.0.1:{port}/' + page_query(rotate, mirror, calibrate, keystone, calibration, person_dots)
 
 
 def load_calibration(path):
@@ -343,6 +347,8 @@ def main():
     p.add_argument('--text-s', type=float, default=0.0, help='hide a message after this many seconds (0: keep it)')
     p.add_argument('--local-url', default='',
                    help='a second bridge (e.g. ws://localhost:8765 on this laptop) for --text-topic and --persons-topic')
+    p.add_argument('--person-dots', action='store_true',
+                   help='draw a red dot under each detected person (off: persons only turn the path red)')
     p.add_argument('--persons-topic', default='/persons',
                    help="std_msgs/String with the detected persons as JSON: a soft red patch at their place ('' for none)")
     p.add_argument('--steer-topic', default='/steer_state',
@@ -382,7 +388,8 @@ def main():
         width, length = calibration['size_mm']
         print(f'using the camera calibration {args.calibration}: {width:.0f} x {length:.0f} mm of ground '
               '(--no-calibration to ignore it)')
-    url = page_url(display.port, args.rotate, args.mirror, args.calibrate, args.keystone, calibration)
+    url = page_url(display.port, args.rotate, args.mirror, args.calibrate, args.keystone, calibration,
+                   args.person_dots)
     print(f'projection page: {url}  (from other devices: '
           + ', '.join(f'http://{ip}:{display.port}/' for ip in local_ips()) + ')')
     browser = None

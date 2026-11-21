@@ -7,9 +7,9 @@ GET /         the display page (display.html)
 GET /events   Server-Sent Events: the current message at once, then every new one (the page reconnects by itself)
 GET /state    the current message as JSON: scene, text, animation, qr (true = show the QR code)
 GET /qr.svg   the QR code (404 without one)
-GET /pitch    the job intro page for a kiosk browser window (pitch.html): shown while the scene is fancy_car
-GET /pitch.json  the details for it (PITCH_CARD from messages.py), photo: true when /photo has one
-GET /photo    the photo for the job intro (404 without one)
+GET /pitch    the intro page for a kiosk browser window (pitch.html): shows the card of the current scene, if any
+GET /pitch.json  {scene: card}: PITCH_CARD for fancy_car, FLIRT_CARD for person_flirt; photo: true when it has one
+GET /photo/<scene>  the photo of that card (404 without one)
 
 Standard library only, plus segno for the QR code (optional: without it there is no QR code). The phone must be on
 the same network as the laptop (home Wi-Fi, or the car's BITT Wi-Fi).
@@ -40,11 +40,12 @@ def qr_svg(text):
 
 
 class DisplayServer:
-    def __init__(self, host='0.0.0.0', port=8080, qr_url=None, qr_scenes=('fancy_car',), pitch=None):
+    def __init__(self, host='0.0.0.0', port=8080, qr_url=None, qr_scenes=('fancy_car',), cards=None):
         self.qr = qr_svg(qr_url) if qr_url else None
-        self.photo = load_photo((pitch or {}).get('photo'))  # (content type, bytes) or None
-        self.pitch = {k: v for k, v in (pitch or {}).items() if k != 'photo'}
-        self.pitch['photo'] = self.photo is not None
+        # cards: {scene: card dict} for the kiosk page; photos as (content type, bytes) per scene
+        self.photos = {scene: load_photo(card.get('photo')) for scene, card in (cards or {}).items()}
+        self.cards = {scene: {**{k: v for k, v in card.items() if k != 'photo'}, 'photo': self.photos[scene] is not None}
+                      for scene, card in (cards or {}).items()}
         self.qr_scenes = set(qr_scenes) if self.qr else set()
         self.state = {'scene': 'nobody', 'text': '', 'animation': 'scanner', 'qr': False}
         self.version = 0
@@ -92,9 +93,9 @@ class DisplayServer:
                 elif path == '/pitch':
                     self._send(200, 'text/html; charset=utf-8', PITCH_PAGE.read_bytes())
                 elif path == '/pitch.json':
-                    self._send(200, 'application/json', json.dumps(server.pitch).encode())
-                elif path == '/photo' and server.photo:
-                    self._send(200, *server.photo)
+                    self._send(200, 'application/json', json.dumps(server.cards).encode())
+                elif path.startswith('/photo/') and server.photos.get(path[len('/photo/'):]):
+                    self._send(200, *server.photos[path[len('/photo/'):]])
                 else:
                     self._send(404, 'text/plain', b'not found')
 
@@ -138,7 +139,7 @@ def load_photo(path):
     if not file.is_absolute():
         file = pathlib.Path(__file__).parent / file
     if not file.is_file():
-        print(f'job intro: no photo at {file}, showing initials instead')
+        print(f'kiosk card: no photo at {file}, showing initials instead')
         return None
     return mimetypes.guess_type(file.name)[0] or 'application/octet-stream', file.read_bytes()
 

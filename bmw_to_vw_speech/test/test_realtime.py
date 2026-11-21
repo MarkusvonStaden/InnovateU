@@ -95,7 +95,7 @@ def test_events_map_to_topics():
     from bmw_to_vw_speech import events
     e = events.Events()
     assert events.parse('{"insult": true, "swearwords": ["Penner"], "ads": ["beer", "bogus", "food"]}') == {
-        "insult": True, "swearwords": ["Penner"], "ads": ["food", "beer"]}
+        "insult": True, "swearwords": ["Penner"], "ads": ["food", "beer"], "pacman": None}
     assert e.messages("Fahr, du Penner", {"insult": True, "swearwords": ["Penner"], "ads": []}) == [
         ("/Swearword", "Penner")]
     ads = ["food", "beer", "finance", "slow_car"]
@@ -112,3 +112,16 @@ def test_events_publish_and_print():
     e.handle("Du Idiot, ich hab Hunger", {"insult": True, "swearwords": ["Idiot"], "ads": ["food"]})
     assert sent == [("/Swearword", "Idiot"), ("/advertisement", "McDonalds")]
     assert any("FCK_PROJECTION" in line for line in logged)
+
+
+def test_pacman_switch():
+    from bmw_to_vw_speech import events
+    assert events.parse('{"insult": false, "ads": [], "pacman": "enable"}')["pacman"] == "enable"
+    assert events.parse('{"insult": false, "ads": [], "pacman": "disable"}')["pacman"] == "disable"
+    assert events.parse('{"insult": false, "ads": [], "pacman": "maybe"}')["pacman"] is None
+    sent, logged = [], []
+    e = events.Events(publish=lambda t, v: sent.append((t, v)) or True, log=logged.append)
+    e.handle("Pacman-Modus an", {"insult": False, "swearwords": [], "ads": [], "pacman": "enable"})
+    assert sent == [("/pacman", "enable")]
+    assert any("Pacman on" in line for line in logged)
+    assert "pacman" in events.prompt()

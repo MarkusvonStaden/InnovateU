@@ -1,0 +1,64 @@
+{
+  "_comment": "Not measured: a plain top view for testing on a normal monitor instead of the projector. 3.0 x 2.25 m of ground in front of the bumper, the car at the bottom edge, no distortion.",
+  "world_to_screen": [
+    0.0003333333333333333,
+    0.0,
+    0.0,
+    0.0,
+    0.00044444444444444447,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+  ],
+  "size_mm": [
+    3000.0,
+    2250.0
+  ],
+  "footprint_mm": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      3000.0,
+      0.0
+    ],
+    [
+      3000.0,
+      2250.0
+    ],
+    [
+      0.0,
+      2250.0
+    ]
+  ],
+  "floor_mm": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      3000.0,
+      0.0
+    ],
+    [
+      3000.0,
+      2250.0
+    ],
+    [
+      0.0,
+      2250.0
+    ]
+  ],
+  "box_mm": [
+    600.0,
+    1237.5,
+    1800.0,
+    675.0
+  ],
+  "screen": [
+    1366,
+    1024
+  ]
+}

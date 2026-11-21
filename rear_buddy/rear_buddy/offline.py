@@ -28,8 +28,8 @@ from .detector import Detector
 from .display_server import DisplayServer
 from .kiosk import open_pitch_window
 from .led_preview import bar_image
-from .fancy import make_fancy_check
-from .messages import PITCH_CARD, QR_SCENES, QR_URL
+from .fancy import make_fancy_check, make_person_check
+from .messages import FLIRT_CARD, PITCH_CARD, QR_SCENES, QR_URL
 from .pipeline import analyse, draw
 from . import rules
 from .rules import Director
@@ -50,13 +50,13 @@ def print_reaction(r):
     print(f'[{r.scene:<10}] leds={r.animation:<10} {text}', flush=True)
 
 
-def run_images(paths, detector, fancy, show, flirt, on_reaction):
+def run_images(paths, detector, fancy, show, flirt, on_reaction, person_check=None):
     for path in paths:
         frame = cv2.imread(str(path))
         if frame is None:
             print(f'{path}: cannot read', file=sys.stderr)
             continue
-        scene, subject, dets = analyse(frame, detector, fancy)
+        scene, subject, dets = analyse(frame, detector, fancy, person_check)
         # A fresh director per image: no confirmation or hold time for single pictures.
         reaction = Director(confirm_frames=1, hold_s=0, flirt=flirt).update(scene)
         print(f'{path.name}: ', end='')
@@ -67,7 +67,7 @@ def run_images(paths, detector, fancy, show, flirt, on_reaction):
                 break
 
 
-def run_stream(source, detector, fancy, show, flirt, on_reaction):
+def run_stream(source, detector, fancy, show, flirt, on_reaction, person_check=None):
     cap = cv2.VideoCapture(int(source) if source.isdigit() else source)
     if not cap.isOpened():
         sys.exit(f'cannot open {source} (camera permission? wrong index or path?)')
@@ -77,7 +77,7 @@ def run_stream(source, detector, fancy, show, flirt, on_reaction):
         ok, frame = cap.read()
         if not ok:
             break
-        scene, subject, dets = analyse(frame, detector, fancy)
+        scene, subject, dets = analyse(frame, detector, fancy, person_check)
         reaction = director.update(scene)
         if reaction:
             on_reaction(reaction)
@@ -95,8 +95,8 @@ def run_stream(source, detector, fancy, show, flirt, on_reaction):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--source', default='0', help='webcam index, video file, image file or image folder')
-    p.add_argument('--fancy', default='clip', choices=['clip', 'always', 'budget', 'never'],
-                   help='car brand check: clip (Porsche/Audi/BMW -> job pitch, Toyota/small -> old is gold) or a fixed answer')
+    p.add_argument('--fancy', default='openai', choices=['openai', 'clip', 'always', 'budget', 'never'],
+                   help='car brand check: openai (vision model, needs internet) or clip (offline): Porsche/Audi/BMW -> job pitch, Toyota/small -> old is gold; or a fixed answer')
     p.add_argument('--flirt', action='store_true', help='demo only: the car flirts with cyclists')
     p.add_argument('--model', default='yolo11n.pt', help='YOLO weights (downloaded on first use)')
     p.add_argument('--pitch-people', action='store_true', help='people behind the car get the job pitch + QR code')
@@ -106,6 +106,10 @@ def main():
     p.add_argument('--no-show', action='store_true', help='print only, no window')
     p.add_argument('--display', action='store_true', help='serve the rear display page for a phone')
     p.add_argument('--port', type=int, default=8080, help='port of the rear display page')
+    p.add_argument('--suit-pitch', action=argparse.BooleanOptionalAction, default=True,
+                   help='a person in a suit behind the car gets the job pitch (OpenAI, needs internet)')
+    p.add_argument('--flirt-women', action=argparse.BooleanOptionalAction, default=True,
+                   help='demo gag: when OpenAI sees a woman behind the car, show the FLIRT_CARD ad (needs internet)')
     p.add_argument('--pitch-window', action='store_true',
                    help='kiosk browser window with the job intro (photo, name, QR) while a premium car is behind us')
     p.add_argument('--pitch-screen', type=int, help='screen for --pitch-window (default: the main screen)')
@@ -115,11 +119,14 @@ def main():
 
     detector = Detector(args.model, args.conf)
     fancy = make_fancy_check(args.fancy)
+    person_check = make_person_check(args.suit_pitch, args.flirt_women)
     on_reaction = print_reaction
     server = None
     browser = None
     if args.display or args.pitch_window:
-        server = DisplayServer(port=args.port, qr_url=QR_URL, qr_scenes=QR_SCENES, pitch=PITCH_CARD)
+        server = DisplayServer(port=args.port, qr_url=QR_URL, qr_scenes=QR_SCENES,
+                               cards={'fancy_car': PITCH_CARD, 'person_pitch': PITCH_CARD,
+                                      'person_flirt': FLIRT_CARD})
         if not server.qr:
             print('no QR code on the display: pip install segno')
         if args.display:
@@ -134,11 +141,11 @@ def main():
     try:
         if src.is_dir():
             run_images(sorted(f for f in src.iterdir() if f.suffix.lower() in IMAGE_TYPES), detector, fancy,
-                       not args.no_show, args.flirt, on_reaction)
+                       not args.no_show, args.flirt, on_reaction, person_check)
         elif src.suffix.lower() in IMAGE_TYPES:
-            run_images([src], detector, fancy, not args.no_show, args.flirt, on_reaction)
+            run_images([src], detector, fancy, not args.no_show, args.flirt, on_reaction, person_check)
         else:
-            run_stream(args.source, detector, fancy, not args.no_show, args.flirt, on_reaction)
+            run_stream(args.source, detector, fancy, not args.no_show, args.flirt, on_reaction, person_check)
     except KeyboardInterrupt:
         pass
     cv2.destroyAllWindows()

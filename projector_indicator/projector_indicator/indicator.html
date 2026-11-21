@@ -254,14 +254,16 @@
   // The advertisement sticks to the ground like a sign painted on the road: when it appears it is pinned to the spot
   // where it is drawn, in the car's odometry frame (state.pose: dead reckoning from /wheel_odom and the steering).
   // While the car drives it stays on that spot, so it slides towards the car (and turns when the car turns). Once its
-  // middle has left the light patch it fades and comes back at its place in front of the car, pinned anew. Without
-  // odometry it rides along with the car as before.
+  // middle has left the light patch it fades out and stays away: each advertisement message is shown once (a new
+  // message, state.text_id, brings a card again). Without odometry it rides along with the car as before.
   // The pose comes ~15 times a second; in between the page carries it on with the car's speed and turn rate, and a
   // new pose's difference to that is faded out over AD_TAU_MS instead of jumping.
   const AD_TAU_MS = 120;
   let odo = null;        // { pose, at, offset }: the last pose, when it came (page clock) and the difference to fade out
   let pin = null;        // the card's middle in the odometry frame, the car's heading then and the card's place then
   let pinnedAd = '', adFading = false, adRect = null;
+  let doneAdId = null;   // the message whose card was driven past: not shown again
+  const currentAd = () => (state.ad && state.text_id !== doneAdId ? state.ad : null);
   function advance(p, dt) {
     const yaw = p.yaw + p.w * dt / 2;
     return { x: p.x + p.v * Math.cos(yaw) * dt, y: p.y + p.v * Math.sin(yaw) * dt, yaw: p.yaw + p.w * dt };
@@ -288,7 +290,7 @@
     pinnedAd = shownAd;
   }
   function stickAd(now) {
-    const el = $('ad'), g = geometry && geometry.g, pose = state.ad && g && adRect ? carPose(now) : null;
+    const el = $('ad'), g = geometry && geometry.g, pose = currentAd() && g && adRect ? carPose(now) : null;
     if (!pose) {
       pin = null;
       if (el.style.transform) el.style.transform = '';
@@ -300,19 +302,21 @@
     // base_link -> world mirrors (x ahead = up, y left = left), so the car turning left turns the card clockwise
     el.style.transform = `translate(${(wx - pin.wx).toFixed(1)}px, ${(wy - pin.wy).toFixed(1)}px) `
       + `rotate(${(pose.yaw - pin.yaw).toFixed(4)}rad)`;
-    if (!adFading && !inside(g.footprint_mm, [wx, wy])) {   // driven past (or backed away): come back in front
+    if (!adFading && !inside(g.footprint_mm, [wx, wy])) {   // driven past (or backed away): gone for good
       adFading = true;
       el.style.opacity = '0';
-      setTimeout(() => { pin = null; el.style.opacity = ''; adFading = false; }, 450);
+      const id = state.text_id;
+      setTimeout(() => { doneAdId = id; pin = null; el.style.opacity = ''; adFading = false; update(); }, 450);
     }
   }
 
   // One red dot per tracked person (keyed by its id, so it glides instead of being redrawn).
   const DOT_MM = 280;
   const dots = new Map();
+  const personDots = params.get('dots') === '1';   // --person-dots; otherwise persons only turn the path red
   function showPersons(g) {
     const layer = $('persons');
-    const persons = g ? state.persons || [] : [], seen = new Set();   // by hand there are no millimetres
+    const persons = g && personDots ? state.persons || [] : [], seen = new Set();   // by hand there are no millimetres
     for (const person of persons.slice(0, 5)) {
       const size = DOT_MM;
       const [x, y] = clampInto(g.footprint_mm, toWorld(person, g, state.light || {}), size / 2, size / 2);
@@ -663,7 +667,7 @@
   function update() {
     if (!geometry) return;
     const { g, w, h } = geometry;
-    const ad = state.ad;   // stays while persons are shown too
+    const ad = currentAd();   // stays while persons are shown too; once driven past it is gone
     showAd(ad);
     if (ad && fittedAd !== shownAd) {   // text sizes only for a new card (or a new layout)
       fittedAd = shownAd;
@@ -693,6 +697,7 @@
       if (view.keystone) q.set('keystone', view.keystone);
     }
     if (view.calibrate) q.set('calibrate', 1);
+    if (personDots) q.set('dots', 1);
     history.replaceState(null, '', '?' + q);
     layout();
   }

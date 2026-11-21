@@ -17,7 +17,8 @@ import threading
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
-SUBPROTOCOL = 'foxglove.websocket.v1'
+# foxglove_bridge 3.x (Foxglove SDK) speaks foxglove.sdk.v1, older bridges foxglove.websocket.v1: offer both.
+SUBPROTOCOLS = ['foxglove.sdk.v1', 'foxglove.websocket.v1']
 OP_MESSAGE_DATA = 0x01  # server -> client: subscription id, receive time, payload; client -> server: channel id, payload
 
 
@@ -86,7 +87,7 @@ class FoxgloveClient:
         last_error = None
         while not self._stop.is_set():
             try:
-                with connect(self.url, subprotocols=[SUBPROTOCOL], max_size=None, open_timeout=5) as ws:
+                with connect(self.url, subprotocols=SUBPROTOCOLS, max_size=None, open_timeout=5) as ws:
                     with self._lock:
                         self._ws = ws
                         self.server_channels.clear()
@@ -114,7 +115,7 @@ class FoxgloveClient:
         if op == 'serverInfo':
             self.capabilities = set(msg.get('capabilities', []))
             self.connected.set()
-            self.log(f'connected to {msg.get("name", "bridge")} at {self.url}')
+            self.log(f'connected to {msg.get("name") or "bridge"} at {self.url}')
             if self.client_channels:
                 if 'clientPublish' not in self.capabilities:
                     self.log('warning: this bridge does not accept messages from clients (no clientPublish)')

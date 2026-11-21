@@ -70,3 +70,24 @@ def test_tiny_crops_are_not_classified():
     check = fancy.ClipBrandCheck.__new__(fancy.ClipBrandCheck)  # no model needed for this path
     tiny = Detection('car', 0.9, (0, 0, 10, 10), 0.001)
     assert check(np.zeros((480, 640, 3), np.uint8), tiny) == (None, None)
+
+
+def test_openai_answer_parsing():
+    from rear_buddy.fancy import parse_answer
+    labels = labels_from({'premium': ['Porsche'], 'budget': ['Toyota'], 'other': ['Ford']}, ['a small cheap city car'])
+    assert parse_answer('{"brand": "Porsche", "confidence": 0.9}', labels) == ('premium', 'Porsche')
+    assert parse_answer('{"brand": "porsche", "confidence": 0.9}', labels) == ('premium', 'Porsche')
+    assert parse_answer('{"brand": "a small cheap city car", "confidence": 0.8}', labels) == \
+        ('budget', 'a small cheap city car')
+    assert parse_answer('{"brand": "Ford", "confidence": 0.9}', labels) == (None, 'Ford')
+    assert parse_answer('{"brand": "Porsche", "confidence": 0.3}', labels) == (None, None)   # unsure
+    assert parse_answer('{"brand": null, "confidence": 0}', labels) == (None, None)
+    assert parse_answer('{"brand": "Ferrari", "confidence": 1}', labels) == (None, None)     # not an option
+    assert parse_answer('not json', labels) == (None, None)
+
+
+def test_openai_check_without_key_falls_back(monkeypatch, tmp_path):
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(fancy, 'api_key', lambda: None)
+    assert make_fancy_check('openai', log=lambda *_: None)(None, None) == (None, None)
