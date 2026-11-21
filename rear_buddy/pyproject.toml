@@ -1,0 +1,34 @@
+[project]
+name = "rear-buddy"
+version = "0.1.0"
+description = "Looks through BITT's rear camera and entertains whoever is behind the car"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "websockets>=14",        # foxglove_bridge client (bridge mode)
+    "numpy>=1.26",
+    "opencv-python>=4.9",
+    "ultralytics>=8.3",      # YOLO detector
+    "open_clip_torch>=2.24", # offline car brand check: --fancy clip
+    "pillow>=10",            # CLIP image input
+    "segno>=1.6",            # QR code on the rear display
+    "mcap>=1.1",             # replaying recorded bags
+]
+
+[project.scripts]
+rear-buddy-offline = "rear_buddy.offline:main"
+rear-buddy-bridge = "rear_buddy.bridge:main"
+rear-buddy-replay = "rear_buddy.replay:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rear_buddy"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]

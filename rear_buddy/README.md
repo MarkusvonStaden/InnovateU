@@ -36,9 +36,10 @@ image ─▶ detector.py (YOLO: person, bicycle, car, ...) ─▶ fancy.py (clos
 ## On your laptop (no ROS, no car): your webcam is the rear camera
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python3 -m pytest test/                               # rules, no camera needed
+uv sync && source .venv/bin/activate                  # like the other projects in this repo (or, without uv:
+                                                      #   python3 -m venv .venv && source .venv/bin/activate
+                                                      #   pip install -e . pytest)
+python3 -m pytest test/                               # rules, no camera needed (or: uv run pytest)
 python3 -m rear_buddy.offline                         # webcam, q to quit
 python3 -m rear_buddy.offline --source car.jpg        # brand check on a photo (Porsche/Audi/BMW, Toyota, ...)
 python3 -m rear_buddy.offline --fancy always          # every car gets the job pitch

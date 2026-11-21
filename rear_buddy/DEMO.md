@@ -11,7 +11,7 @@ rear camera ─▶ BITT Wi-Fi ─▶ your Mac: YOLO + brand check + rules ─▶
 All commands run from the package folder, with the virtual environment active:
 
 ```bash
-cd PMS/rear_buddy
+cd InnovateU/rear_buddy          # after the first `uv sync` (see README)
 source .venv/bin/activate
 ```
 
@@ -21,8 +21,8 @@ source .venv/bin/activate
 
 The car's Wi-Fi has **no internet**, so anything that downloads must happen today.
 
-- [ ] **Right branch:** `git status` shows `On branch rear-buddy`.
-- [ ] **Tests pass:** `python3 -m pytest -q test/` gives `74 passed`.
+- [ ] **Right branch:** `git status` shows the branch you want to demo.
+- [ ] **Tests pass:** `python3 -m pytest -q test/` gives `80 passed`.
 - [ ] **Models work offline:** this must print the job pitch, "old is gold" and the hello, with no download:
   ```bash
   HF_HUB_OFFLINE=1 python3 -m rear_buddy.offline --no-show --source ../../../bags/demo_photos
