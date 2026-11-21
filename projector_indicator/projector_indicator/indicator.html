@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en" translate="no">
+<head>
+<meta charset="utf-8">
+<!-- No "translate this page?" bar: it would be projected onto the road. -->
+<meta name="google" content="notranslate">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BITT indicator</title>
+<!-- Projected onto the ground in front of the car. Black = no light, so everything that is not an arrow stays black.
+     Everything inline: the car's network has no internet. -->
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none;
+    font-family: system-ui, "Segoe UI", Roboto, sans-serif; color: #fff; -webkit-user-select: none; user-select: none; }
+  /* The car's frame: up = ahead of the car, left = the car's left.
+     Measured (?ground=...): it IS the ground, 1 px = 1 mm, and it is mapped onto the screen so that it lands
+     undistorted on the whole light patch. By hand: the screen, turned, mirrored and keystoned to fit the projector. */
+  #world, #keystone, #box, #ground, #grid, #outline { position: absolute; left: 0; top: 0; }
+  #world { position: fixed; transform-origin: 0 0; }
+  #keystone { transform-origin: 0 0; }
+  #grid, #outline { display: none; width: 100%; height: 100%; }
+  .calibrate #grid, .calibrate #outline { display: block; }
+  /* The grid is made of squares: on the ground they should look square. */
+  #grid { --line: 2px; background-image: linear-gradient(#666 var(--line), transparent var(--line)),
+                                         linear-gradient(90deg, #666 var(--line), transparent var(--line)); }
+  #outline polygon { fill: none; stroke: #fff; }
+  #outline #floor { stroke: #5c5; stroke-dasharray: 40 25; }  /* where the camera saw the squares on the floor */
+  /* Where the indicator goes. cqmin below = % of this box. */
+  #box { container-type: size; }
+  #chevrons { position: absolute; left: 0; top: 50%; width: 100%; transform: translateY(-50%); overflow: visible; }
+  /* The glow is a wide, faint outline, not a CSS filter: a filter is recomputed every time a chevron lights up,
+     which made the sequence stutter. */
+  .chevron { fill: #ffa400; stroke: #ff8c00; stroke-opacity: 0.35; stroke-width: 16; stroke-linejoin: round;
+    paint-order: stroke; opacity: 0; }
+  #labels { display: none; position: absolute; inset: 0; }
+  .calibrate #labels { display: block; }
+  #labels div { position: absolute; font-weight: 800; font-size: 12cqmin; line-height: 1; white-space: nowrap; }
+  #front { top: 2%; left: 50%; transform: translateX(-50%); }
+  #left { left: 2%; top: 50%; transform: translateY(-50%); }
+  #right { right: 2%; top: 50%; transform: translateY(-50%); }
+  /* The advertisement card between the chevrons: a navigation banner (turn arrow + distance) over the destination
+     (logo + name). Sizes in cqh = % of the card's height, so it scales with the box on the ground. */
+  #ad { position: absolute; display: none; flex-direction: column; justify-content: space-between;
+    container-type: size; }
+  .with-ad #ad { display: flex; }
+  .calibrate #ad { outline: 6px dashed #4af; }
+  #nav { height: 44cqh; display: flex; align-items: center; gap: 4cqh; padding: 0 5cqh; box-sizing: border-box;
+    background: #0f7b3e; border-radius: 6cqh; color: #fff; overflow: hidden; }
+  #turn { width: 36cqh; height: 36cqh; flex: 0 0 auto; }
+  #turn path { fill: none; stroke: #fff; stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; }
+  #turn polygon { fill: #fff; }
+  #dest { height: 50cqh; display: flex; align-items: center; gap: 5cqh; overflow: hidden; }
+  #logo, #badge { width: 50cqh; height: 50cqh; flex: 0 0 auto; }
+  /* Logos on a white tile, so a black logo shows too (black is no light on the ground); wide ones (a wordmark)
+     may get wider than square. */
+  #logo { width: auto; max-width: 62cqw; object-fit: contain; background: #fff; padding: 7cqh 8cqh;
+    border-radius: 8cqh; box-sizing: border-box; }
+  #badge { border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900;
+    font-size: 26cqh; box-sizing: border-box; border: 2.5cqh solid; }
+  .fit { flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: center; font-weight: 800;
+    line-height: 1.05; overflow-wrap: break-word; overflow: hidden; }
+  #dist { white-space: nowrap; }
+  /* Persons walking into the car's way: a red dot on the ground under each of them, gliding along with them and
+     fading when they are gone. Sized in mm by layout(). */
+  #persons { position: absolute; left: 0; top: 0; pointer-events: none; }
+  .dot { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; opacity: 0;
+    background: radial-gradient(closest-side, #ff1400 72%, rgba(255, 20, 0, 0.5) 86%, rgba(255, 20, 0, 0) 100%);
+    transition: left 0.3s linear, top 0.3s linear, opacity 0.4s; }
+  @media (prefers-reduced-motion: reduce) { .dot { transition: none; } }
+  /* The path the car is about to drive (from the steering angle): white while it is free, red when somebody is in it.
+     A small canvas (4 mm per pixel) stretched over the ground: an SVG that size was re-rastered at the projector's
+     full resolution whenever the path moved, and that made everything else stutter. */
+  #corridor { position: absolute; left: 0; top: 0; pointer-events: none; display: none; }
+  #corridor.on { display: block; }
+  #info { bottom: 2%; left: 50%; transform: translateX(-50%); font-size: 5cqmin !important; font-weight: 600 !important;
+    opacity: 0.8; text-align: center; }
+</style>
+</head>
+<body>
+<div id="world"><div id="keystone">
+  <div id="grid"></div>
+  <svg id="outline" aria-hidden="true"><polygon id="foot"/><polygon id="floor"/></svg>
+  <!-- Your own content (logos, ...) goes in here: positioned in millimetres on the ground in measured mode,
+       x to the car's right, y towards the car, (0, 0) = front left corner of the light patch's bounding box. -->
+  <div id="ground"></div>
+  <canvas id="corridor" aria-hidden="true"></canvas>
+  <div id="persons"></div>
+  <div id="ad">
+    <div id="nav">
+      <svg id="turn" viewBox="0 0 100 100" aria-hidden="true"><g><path/><polygon/></g></svg>
+      <div id="dist" class="fit"></div>
+    </div>
+    <div id="dest">
+      <img id="logo" alt="">
+      <div id="badge"></div>
+      <div id="title" class="fit"></div>
+    </div>
+  </div>
+  <div id="box">
+    <svg id="chevrons" viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true">
+      <!-- index 0 = next to the car's centre line, 2 = outermost: they light up from the inside out.
+           They sit at the edges: the middle (290..710) is where the text goes. -->
+      <g id="g-left">
+        <polygon class="chevron" data-i="2" points="20,200 90,80 130,80 60,200 130,320 90,320"/>
+        <polygon class="chevron" data-i="1" points="95,200 165,80 205,80 135,200 205,320 165,320"/>
+        <polygon class="chevron" data-i="0" points="170,200 240,80 280,80 210,200 280,320 240,320"/>
+      </g>
+      <g id="g-right">
+        <polygon class="chevron" data-i="0" points="830,200 760,80 720,80 790,200 720,320 760,320"/>
+        <polygon class="chevron" data-i="1" points="905,200 835,80 795,80 865,200 795,320 835,320"/>
+        <polygon class="chevron" data-i="2" points="980,200 910,80 870,80 940,200 870,320 910,320"/>
+      </g>
+    </svg>
+    <div id="labels">
+      <div id="front">FRONT ↑</div>
+      <div id="left">◀ LEFT</div>
+      <div id="right">RIGHT ▶</div>
+      <div id="info"></div>
+    </div>
+  </div>
+</div></div>
+<script>
+  const params = new URLSearchParams(location.search);
+  const view = { rotate: (+params.get('rotate') || 0) % 360, mirror: params.get('mirror') === '1',
+                 calibrate: params.get('calibrate') === '1', keystone: clamp(+params.get('keystone') || 0),
+                 ground: parseGround(params.get('ground')) };
+  const $ = (id) => document.getElementById(id);
+  const world = $('world'), keystone = $('keystone'), box = $('box'), grid = $('grid'), info = $('info');
+  const outline = $('outline'), chevrons = $('chevrons');
+  const sides = { left: [...document.querySelectorAll('#g-left .chevron')],
+                  right: [...document.querySelectorAll('#g-right .chevron')] };
+  let state = { direction: 'off', period_ms: 500, live: false, failsafe: false }, since = performance.now();
+  let connected = false;
+
+  // Measured by projector_indicator.projector_cal: world_to_screen (3x3, mm -> screen fractions), size_mm, footprint_mm, box_mm.
+  function parseGround(text) {
+    try {
+      const g = JSON.parse(text);
+      return g && g.world_to_screen.length === 9 && g.size_mm.length === 2 && g.box_mm.length === 4 ? g : null;
+    } catch (e) { return null; }
+  }
+
+  function clamp(k) { return Math.round(Math.max(-0.9, Math.min(0.9, k)) * 100) / 100; }
+
+  // CSS matrix3d of the homography h (3x3, row major): (x, y) -> (h0 x + h1 y + h2, h3 x + h4 y + h5) / (h6 x + h7 y + h8)
+  function homographyMatrix(h) {
+    return `matrix3d(${h[0]},${h[3]},0,${h[6]},${h[1]},${h[4]},0,${h[7]},0,0,1,0,${h[2]},${h[5]},0,${h[8]})`;
+  }
+
+  // The homography that maps a w x h box onto the quad p0..p3 (top left, top right, bottom right, bottom left)
+  // (Heckbert's square-to-quad), as a CSS matrix.
+  function quadMatrix(w, h, p) {
+    const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = p;
+    const dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3;
+    const dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
+    const den = dx1 * dy2 - dx2 * dy1;
+    const g = (dx3 * dy2 - dx2 * dy3) / den, hh = (dx1 * dy3 - dx3 * dy1) / den;
+    const a = x1 - x0 + g * x1, b = x3 - x0 + hh * x3, d = y1 - y0 + g * y1, e = y3 - y0 + hh * y3;
+    return homographyMatrix([a / w, b / h, x0, d / w, e / h, y0, g / w, hh / h, 1]);
+  }
+
+  // By hand, keystone k > 0: the front edge (far from the projector, gets the widest on the ground) is drawn narrower
+  // by k; k < 0: the edge next to the car instead. Done in the car's frame, so it turns and mirrors with the picture.
+  function keystoneTransform(w, h, k) {
+    const top = Math.max(k, 0) * w / 2, bottom = Math.max(-k, 0) * w / 2;
+    return k ? quadMatrix(w, h, [[top, 0], [w - top, 0], [w - bottom, h], [bottom, h]]) : 'none';
+  }
+
+  // Turn arrows in the style of a navigation app (100 x 100, pointing up = straight on): stem + head.
+  const TURN = {
+    straight: ['M50 92 V30', '30,38 50,10 70,38'],
+    right: ['M36 92 V58 Q36 40 54 40 H70', '64,18 92,40 64,62'],
+    'slight-right': ['M40 92 V64 L66 38', '54,22 84,20 82,50'],
+  };
+  function turnShape(turn) {
+    const mirror = turn.endsWith('left');
+    const [d, head] = TURN[turn.replace('left', 'right')] || TURN.straight;
+    return { d, head, transform: mirror ? 'translate(100 0) scale(-1 1)' : '' };
+  }
+
+  // While an advertisement is shown, the chevrons shrink to the edges and the card takes the middle.
+  const SMALL = 0.55;
+  function setChevronSize(small) {
+    const k = small ? SMALL : 1;
+    $('g-left').setAttribute('transform', `translate(20 200) scale(${k}) translate(-20 -200)`);
+    $('g-right').setAttribute('transform', `translate(980 200) scale(${k}) translate(-980 -200)`);
+  }
+
+  function adPlace(boxRect, rowHeight) {
+    const [bx, by, bw, bh] = boxRect, x0 = 0.18, width = 0.64;   // between the shrunk chevrons
+    return [bx + bw * x0, by + (bh - rowHeight) / 2, bw * width, rowHeight];
+  }
+
+  // x range [left, right] of a convex polygon at height y (null when the line misses it)
+  function spanAt(poly, y) {
+    const xs = [];
+    poly.forEach(([x1, y1], i) => {
+      const [x2, y2] = poly[(i + 1) % poly.length];
+      if (Math.min(y1, y2) <= y && y <= Math.max(y1, y2)) {
+        if (y1 === y2) xs.push(x1, x2); else xs.push(x1 + (y - y1) * (x2 - x1) / (y2 - y1));
+      }
+    });
+    return xs.length ? [Math.min(...xs), Math.max(...xs)] : null;
+  }
+
+  // Where a marker of half size (hw, hh) centred near p fits completely into the convex polygon: as far ahead as p
+  // (its y) where possible, and moved sideways only as much as needed.
+  function clampInto(poly, [px, py], hw, hh) {
+    const ys = poly.map(q => q[1]), y0 = Math.min(...ys) + hh, y1 = Math.max(...ys) - hh;
+    const y = y0 <= y1 ? Math.max(y0, Math.min(y1, py)) : (y0 + y1) / 2;
+    const a = spanAt(poly, y - hh) || spanAt(poly, y), b = spanAt(poly, y + hh) || spanAt(poly, y);
+    const lo = Math.max(a[0], b[0]) + hw, hi = Math.min(a[1], b[1]) - hw;
+    return [lo <= hi ? Math.max(lo, Math.min(hi, px)) : (lo + hi) / 2, y];
+  }
+
+  // base_link (metres: x ahead of the rear axle, y to the left) -> world (mm on the ground). The light patch's edge
+  // next to the car is at base_link x = light.start_m; its middle is the middle of the footprint's nearest edge.
+  function toWorld(person, g, light) {
+    const near = [...g.footprint_mm].sort((a, b) => b[1] - a[1]).slice(0, 2);
+    const ox = (near[0][0] + near[1][0]) / 2, oy = (near[0][1] + near[1][1]) / 2;
+    return [ox - (person.y - (light.offset_m || 0)) * 1000, oy - (person.x - (light.start_m ?? 1.05)) * 1000];
+  }
+
+  // One red dot per tracked person (keyed by its id, so it glides instead of being redrawn).
+  const DOT_MM = 280;
+  const dots = new Map();
+  function showPersons(g) {
+    const layer = $('persons');
+    const persons = g ? state.persons || [] : [], seen = new Set();   // by hand there are no millimetres
+    for (const person of persons.slice(0, 5)) {
+      const size = DOT_MM;
+      const [x, y] = clampInto(g.footprint_mm, toWorld(person, g, state.light || {}), size / 2, size / 2);
+      let el = dots.get(person.id);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'dot';
+        Object.assign(el.style, { left: x + 'px', top: y + 'px', width: size + 'px', height: size + 'px' });
+        layer.append(el);
+        dots.set(person.id, el);
+        el.getBoundingClientRect();   // start from transparent, so it fades in
+      }
+      Object.assign(el.style, { left: x + 'px', top: y + 'px', width: size + 'px', height: size + 'px',
+                                opacity: String(0.25 + 0.75 * (person.seen ?? 1)) });
+      seen.add(person.id);
+    }
+    for (const [id, el] of dots) {   // gone: fade out, then remove
+      if (seen.has(id)) continue;
+      dots.delete(id);
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 500);
+    }
+  }
+
+  // The car's path: the bicycle model (the rear axle's centre runs on a circle of radius wheelbase / tan(steer)),
+  // as wide as the car, from its front bumper on. The same as ground.corridor_contains in Python.
+  // The steering angle glides to the car's value (Python already smooths it; this removes the steps between its
+  // updates), so the path swings over instead of jumping.
+  const WHEELBASE_M = 0.72, CAR_WIDTH_M = 0.76, FRONT_M = 1.05, STEER_TAU_MS = 60;
+  let shownSteer = null, steerAt = 0, steerGround = null;
+  function glideSteer(now) {
+    const c = state.corridor;
+    if (!c || !steerGround) { shownSteer = null; return; }
+    if (shownSteer === null) shownSteer = c.steer_rad;
+    const a = 1 - Math.exp(-Math.max(0, now - steerAt) / STEER_TAU_MS);
+    steerAt = now;
+    const next = shownSteer + (c.steer_rad - shownSteer) * a;
+    if (Math.abs(next - shownSteer) < 1e-5) return;
+    shownSteer = next;
+    drawCorridor(steerGround);
+  }
+  const CORRIDOR_MM_PER_PX = 4, FADE_MM = 220;
+  let fade = null;   // the light patch, faded out towards its edge (same pixels as the canvas)
+  function placeCorridor(g, w, h) {   // on layout only
+    const canvas = $('corridor'), k = 1 / CORRIDOR_MM_PER_PX;
+    place(canvas, 0, 0, w, h);
+    canvas.width = Math.ceil(w * k); canvas.height = Math.ceil(h * k);
+    fade = g ? softEdges(g.footprint_mm, canvas.width, canvas.height, k) : null;
+    if (shownSteer !== null && steerGround) drawCorridor(steerGround);
+  }
+  function showCorridor(g) {          // on every update; the path itself only moves in glideSteer
+    const canvas = $('corridor'), c = state.corridor;
+    canvas.classList.toggle('on', !!(g && c));
+    steerGround = g && c ? g : null;
+    if (!steerGround) { shownSteer = null; return; }
+    if (shownSteer === null || !!c.blocked !== drawnBlocked) {
+      if (shownSteer === null) shownSteer = c.steer_rad;
+      drawCorridor(g);
+    }
+  }
+  // Fade out towards the edge of the light patch instead of a hard cut there: a blurred, shrunk copy of the patch,
+  // drawn once; every frame of the path is cut with it.
+  function softEdges(poly, cw, ch, k) {
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const ctx = c.getContext('2d');
+    ctx.filter = `blur(${FADE_MM * k / 2}px)`;
+    ctx.beginPath();
+    poly.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x * k, y * k));
+    ctx.closePath();
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.globalCompositeOperation = 'destination-out';   // shrink: the fade ends at the edge, not beyond it
+    ctx.lineWidth = FADE_MM * 2 * k; ctx.lineJoin = 'round'; ctx.stroke();
+    return c;
+  }
+  let drawnBlocked = false;
+  function drawCorridor(g) {
+    const canvas = $('corridor'), ctx = canvas.getContext('2d'), m = 1 / CORRIDOR_MM_PER_PX;
+    const blocked = drawnBlocked = !!(state.corridor && state.corridor.blocked);
+    const k = Math.tan(shownSteer) / WHEELBASE_M, half = CAR_WIDTH_M / 2, left = [], right = [];
+    for (let s = FRONT_M; s <= FRONT_M + 9; s += 0.1) {
+      const [x, y, hx, hy] = Math.abs(k) < 1e-4 ? [s, 0, 1, 0]
+        : [Math.sin(k * s) / k, (1 - Math.cos(k * s)) / k, Math.cos(k * s), Math.sin(k * s)];
+      left.push(toWorld({ x: x - hy * half, y: y + hx * half }, g, state.light || {}));
+      right.push(toWorld({ x: x + hy * half, y: y - hx * half }, g, state.light || {}));
+    }
+    const trace = (list, start) => list.forEach(([x, y], i) => ctx[i || !start ? 'lineTo' : 'moveTo'](x * m, y * m));
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    trace(left, true);
+    trace([...right].reverse(), false);
+    ctx.closePath();
+    ctx.fillStyle = blocked ? 'rgba(255, 20, 0, 0.22)' : 'rgba(255, 255, 255, 0.08)';
+    ctx.fill();
+    ctx.lineWidth = 30 * m; ctx.lineCap = ctx.lineJoin = 'round';
+    ctx.strokeStyle = blocked ? 'rgba(255, 30, 0, 0.95)' : 'rgba(255, 255, 255, 0.6)';
+    for (const edge of [left, right]) {
+      ctx.beginPath();
+      trace(edge, true);
+      ctx.stroke();
+    }
+    if (fade) {
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(fade, 0, 0);
+    }
+  }
+
+  let shownAd = '';
+  function showAd(ad) {
+    const key = JSON.stringify(ad || null);
+    if (key === shownAd) return;
+    shownAd = key;
+    document.body.classList.toggle('with-ad', !!ad);
+    setChevronSize(!!ad);
+    if (!ad) return;
+    const shape = turnShape(ad.turn);
+    const arrow = $('turn').querySelector('g');
+    arrow.setAttribute('transform', shape.transform);
+    arrow.querySelector('path').setAttribute('d', shape.d);
+    arrow.querySelector('polygon').setAttribute('points', shape.head);
+    $('dist').textContent = ad.distance;
+    $('title').textContent = ad.title;
+    const logo = $('logo'), badge = $('badge');
+    logo.style.display = ad.logo ? '' : 'none';
+    badge.style.display = ad.logo ? 'none' : '';
+    if (ad.logo && !logo.src.endsWith(ad.logo)) {
+      logo.onload = () => { fittedAd = null; update(); };   // the logo takes its width only once loaded
+      logo.src = ad.logo;
+    }
+    Object.assign(badge.style, { background: ad.color, color: ad.accent, borderColor: ad.accent });
+    badge.textContent = ad.initials;
+  }
+
+  // Largest font size (px = mm on the ground in measured mode) at which the text still fits its place.
+  function fitText(el) {
+    if (!el.textContent) return;
+    let lo = 4, hi = 2000;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) / 2;
+      el.style.fontSize = mid + 'px';
+      (el.scrollHeight <= el.clientHeight && el.scrollWidth <= el.clientWidth) ? lo = mid : hi = mid;
+    }
+    el.style.fontSize = lo + 'px';
+  }
+
+  function place(el, x, y, w, h) {
+    Object.assign(el.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+  }
+
+  function layout() {
+    let w, h, boxRect, cell, line, foot;
+    const g = view.ground;
+    if (g) {
+      [w, h] = g.size_mm;
+      const m = g.world_to_screen, sx = innerWidth, sy = innerHeight;   // screen fractions -> CSS pixels
+      world.style.transform = homographyMatrix([m[0] * sx, m[1] * sx, m[2] * sx, m[3] * sy, m[4] * sy, m[5] * sy,
+                                                m[6], m[7], m[8]]);
+      keystone.style.transform = 'none';
+      boxRect = g.box_mm; cell = 100; line = 4; foot = g.footprint_mm;   // 10 cm squares, 4 mm lines
+    } else {
+      const sideways = view.rotate % 180 !== 0;
+      w = sideways ? innerHeight : innerWidth; h = sideways ? innerWidth : innerHeight;
+      world.style.transform = `translate(${innerWidth / 2}px, ${innerHeight / 2}px) rotate(${view.rotate}deg) `
+        + `scaleX(${view.mirror ? -1 : 1}) translate(${-w / 2}px, ${-h / 2}px)`;
+      keystone.style.transform = keystoneTransform(w, h, view.keystone);
+      boxRect = [0, 0, w, h]; cell = w / 8; line = 2; foot = [[0, 0], [w, 0], [w, h], [0, h]];
+    }
+    place(world, 0, 0, w, h);
+    place(keystone, 0, 0, w, h);
+    place($('ground'), 0, 0, w, h);
+    place(box, ...boxRect);
+    const rowHeight = Math.min(boxRect[3] * 0.85, boxRect[2]);
+    chevrons.style.height = rowHeight + 'px';
+    place($('ad'), ...adPlace(boxRect, rowHeight));
+    place($('persons'), 0, 0, w, h);
+    placeCorridor(g, w, h);
+    geometry = { g, w, h };
+    fittedAd = null;   // the card may have a new size
+    grid.style.setProperty('--line', line + 'px');
+    Object.assign(grid.style, { backgroundSize: `${cell}px ${cell}px`,
+                                backgroundPosition: `${(w / 2) % cell}px ${h % cell}px` });  // grid lines from the car
+    outline.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    const points = (list) => (list || []).map(p => p.join(',')).join(' ');
+    $('foot').setAttribute('points', points(foot));
+    $('floor').setAttribute('points', points(g && g.floor_mm));
+    for (const id of ['foot', 'floor']) $(id).setAttribute('stroke-width', g ? 10 : 6);
+    document.body.classList.toggle('calibrate', view.calibrate);
+    update();
+  }
+
+  // Every message from the car: only what changed is touched, so the page does not redo its whole layout ~15 times a
+  // second (that made the chevrons stutter).
+  let geometry = null, fittedAd = null, shownInfo = '';
+  function update() {
+    if (!geometry) return;
+    const { g, w, h } = geometry;
+    const ad = state.ad;   // stays while persons are shown too
+    showAd(ad);
+    if (ad && fittedAd !== shownAd) {   // text sizes only for a new card (or a new layout)
+      fittedAd = shownAd;
+      fitText($('dist'));
+      fitText($('title'));
+    }
+    showCorridor(g);
+    showPersons(g);
+    if (!view.calibrate) return;        // the info line is only visible while calibrating
+    const data = !connected ? 'no connection to the laptop' : !state.live ? 'no data from the car'
+      : `car: ${state.direction}${state.failsafe ? ' (failsafe)' : ''}`;
+    const text = g ? `measured ground ${Math.round(w)} × ${Math.round(h)} mm · grid 10 cm · ${data}<br>`
+        + 'C calibration · F full screen'
+      : `rotate ${view.rotate}° · mirror ${view.mirror ? 'on' : 'off'} · keystone ${view.keystone} · ${data}<br>`
+        + 'R turn · M mirror · ↑↓ keystone · C calibration · F full screen';
+    if (text !== shownInfo) info.innerHTML = shownInfo = text;
+  }
+
+  function remember() {  // keep the view in the address, so a reload keeps it
+    const q = new URLSearchParams();
+    if (view.ground) q.set('ground', params.get('ground'));
+    else {
+      q.set('rotate', view.rotate);
+      if (view.mirror) q.set('mirror', 1);
+      if (view.keystone) q.set('keystone', view.keystone);
+    }
+    if (view.calibrate) q.set('calibrate', 1);
+    history.replaceState(null, '', '?' + q);
+    layout();
+  }
+
+  // Sequential indicator: during the "on" half of the period the chevrons light up from the inside out.
+  function frame(now) {
+    const period = Math.max(200, state.period_ms || 500), on = period / 2;
+    const phase = (now - since) % period;
+    const lit = phase < on ? Math.min(3, 1 + Math.floor(phase / (on * 0.6 / 3))) : 0;
+    for (const [side, list] of Object.entries(sides)) {
+      const active = state.live && (state.direction === side || state.direction === 'hazard');
+      list.forEach(c => {
+        const on = active && +c.dataset.i < lit ? '1' : '0';
+        if (c.style.opacity !== on) c.style.opacity = on;
+      });
+    }
+    glideSteer(now);
+    requestAnimationFrame(frame);
+  }
+
+  function show(next) {
+    if (next.direction !== state.direction) since = performance.now();  // a new direction starts with light
+    state = next;
+    update();
+  }
+
+  function connect() {
+    const events = new EventSource('events');
+    events.onopen = () => { connected = true; update(); };
+    events.onmessage = (e) => show(JSON.parse(e.data));
+    events.onerror = () => {  // laptop gone: dark rather than a stale arrow; EventSource retries by itself
+      connected = false;
+      show({ ...state, live: false });
+    };
+  }
+
+  addEventListener('keydown', (e) => {
+    const key = e.key.toLowerCase();
+    if (view.ground && ['r', 'm', 'arrowup', 'arrowdown'].includes(key)) return;  // measured: nothing to adjust
+    if (key === 'r') view.rotate = (view.rotate + 90) % 360;
+    else if (key === 'm') view.mirror = !view.mirror;
+    else if (key === 'c') view.calibrate = !view.calibrate;
+    else if (key === 'arrowup' || key === 'arrowdown') {
+      view.keystone = clamp(view.keystone + (key === 'arrowup' ? 1 : -1) * (e.shiftKey ? 0.1 : 0.02));
+      e.preventDefault();
+    } else if (key === 'f') {
+      const el = document.documentElement;
+      document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen?.();
+      return;
+    } else return;
+    remember();
+  });
+  addEventListener('resize', layout);
+  layout();
+  connect();
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>
