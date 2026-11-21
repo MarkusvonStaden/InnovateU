@@ -36,7 +36,7 @@ from .ground import Ground, corridor_contains
 from .screens import monitors, open_fullscreen, pick_screen
 
 PAGE = pathlib.Path(__file__).with_name('indicator.html')
-CALIBRATION = pathlib.Path(__file__).with_name('projector_local.json')  # written by projector_cal.py, git-ignored
+CALIBRATION = pathlib.Path(__file__).with_name('projector_local.json')  # written by projector_cal.py (our set-up is committed)
 MODES = {1: 'left', 2: 'right', 3: 'hazard'}   # LightsCmd.MODE_*; MODE_SOLID (0) and anything else: off
 TYPES = {'/lights_state': 'car_interfaces/LightsState', '/lights_cmd': 'car_interfaces/LightsCmd'}
 DEMO = [('left', 4.0), ('off', 1.5), ('right', 4.0), ('off', 1.5), ('hazard', 4.0), ('off', 1.5)]

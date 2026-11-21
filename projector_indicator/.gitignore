@@ -1,5 +1,3 @@
 .venv/
 __pycache__/
 .pytest_cache/
-# measured on this projector set-up, not shared
-projector_indicator/projector_local.json

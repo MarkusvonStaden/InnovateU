@@ -85,7 +85,7 @@ ground mapping. That mapping is then used for the **whole** projector picture: w
 the floor (out of its view, or on a wall) it is extrapolated, capped 6 m away. Squares landing on a wall are left out
 of the fit; the indicator stays where squares were measured on the floor. Daylight or a lamp shining onto the floor
 can make it misread the paper: it then stops, or refuses to save an implausible result. It saves to
-`projector_indicator/projector_local.json` (git-ignored):
+`projector_indicator/projector_local.json` (in the repository: the measurement of our set-up, measure again when the projector moves):
 
 | | |
 |---|---|

@@ -18,7 +18,7 @@ projector -> ground mapping. Ahead of the car = away from the projector (the nar
 it). The page then draws in ground millimetres (x to the car's right, y towards the car) and maps them onto the screen
 with that mapping, so everything lands undistorted on the whole light patch. Squares the camera finds off the ground
 plane (on a wall) are left out, and so is the part of the light patch around them.
-Saved to projector_indicator/projector_local.json (git-ignored); afterwards it projects the grid and saves a top view of it.
+Saved to projector_indicator/projector_local.json (committed: the measurement of our set-up); afterwards it projects the grid and saves a top view of it.
 """
 import argparse
 import json

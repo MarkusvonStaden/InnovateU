@@ -5,8 +5,8 @@
 A message naming a known brand gets that brand's card; any other text becomes its own destination, with a direction
 and distance made up from the text (always the same for the same text, so it does not jump around).
 Logos: put the brand's official logo file into projector_indicator/logos/ (<brand>.svg or .png, e.g. porsche.svg,
-mcdonalds.svg; brands offer them in their press areas). That folder is git-ignored: logo files are the brands'
-trademarks, keep them out of the repository. Without a file the card shows a plain badge in the brand's colours.
+mcdonalds.svg; brands offer them in their press areas). Porsche, McDonald's, Bayreuther and Bitcoin are included.
+Without a file the card shows a plain badge in the brand's colours.
 """
 import hashlib
 import pathlib
