@@ -39,7 +39,7 @@ uv run python -m projector_indicator.indicator --url ws://172.16.39.142:8765   #
   distance over the destination with its logo. A message naming a known brand gets its card (`Porsche` -> Porsche
   Zentrum, right, 100 m; `McDonald's` -> left, 250 m; more in [ads.py](projector_indicator/ads.py)); any other text becomes
   the destination with a made-up direction and distance. An empty message clears it. Logos: put the brand's
-  official logo file into `projector_indicator/logos/` (`porsche.svg`, `mcdonalds.svg`, ...; git-ignored, logos are the
+  official logo file into `projector_indicator/logos/` (`porsche.svg`, `mcdonalds.svg`, `bayreuther.png` and `bitcoin.svg` are included; logos are the
   brands' trademarks); without one the card shows a plain badge in the brand's colours. `--text-topic` picks another
   topic ('' for none), `--text "..."` shows a card until the first message comes (and in `--demo`), `--text-s 10`
   hides a message after 10 s. With the fake car: type `a Porsche`.

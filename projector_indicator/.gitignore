@@ -3,6 +3,3 @@ __pycache__/
 .pytest_cache/
 # measured on this projector set-up, not shared
 projector_indicator/projector_local.json
-# brand logos are the brands' trademarks: put them in locally (see logos/README.txt)
-projector_indicator/logos/*
-!projector_indicator/logos/README.txt
