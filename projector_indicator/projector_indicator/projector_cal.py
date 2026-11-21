@@ -24,6 +24,7 @@ import argparse
 import json
 import pathlib
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -349,7 +350,8 @@ class Session:
             html, page = page, pathlib.Path(self.tmp.name, 'page.html')
             page.write_text(html, encoding='utf-8')
         self.server = DisplayServer(host='127.0.0.1', port=0, page=page, state=state)
-        self.cap = cv2.VideoCapture(camera, cv2.CAP_DSHOW) if hasattr(cv2, 'CAP_DSHOW') else cv2.VideoCapture(camera)
+        # DirectShow only on Windows (cv2.CAP_DSHOW exists everywhere, but elsewhere the camera does not open with it)
+        self.cap = cv2.VideoCapture(camera, cv2.CAP_DSHOW) if sys.platform == 'win32' else cv2.VideoCapture(camera)
         if not self.cap.isOpened():
             raise SystemExit(f'camera {camera} does not open')
         for _ in range(30):

@@ -14,6 +14,7 @@ import json
 import os
 import threading
 import time
+from urllib.parse import urlparse
 
 from dotenv import find_dotenv, load_dotenv
 
@@ -21,7 +22,16 @@ from person_finder.cdr import Codec, normalize
 from person_finder.foxglove_client import FoxgloveClient
 from person_finder.geometry import DEFAULT_K, Camera, locate
 
-CAMERA_TOPICS = ["/preview/left/compressed", "/visual_slam/image_0"]  # preferred first: small JPEGs over Wi-Fi
+# Preferred first. Over Wi-Fi the small JPEG preview (~5 fps); on this computer (fake BITT, Gazebo) the raw
+# 60 fps camera, which is far too big for Wi-Fi (~13 MB/s) but makes the picture smooth.
+CAMERA_TOPICS = ["/preview/left/compressed", "/visual_slam/image_0"]
+LOCAL_CAMERA_TOPICS = ["/visual_slam/image_0", "/preview/left/compressed"]
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+def camera_topics(bridge_url):
+    host = urlparse(bridge_url).hostname or ""
+    return LOCAL_CAMERA_TOPICS if host in LOCAL_HOSTS else CAMERA_TOPICS
 ZONE_DE = {"ahead": "vor dem Auto", "left": "links", "right": "rechts"}
 
 
@@ -87,6 +97,11 @@ class PersonFinder:
         self.calibration = None  # Camera from CameraInfo, at the calibration's own resolution
         self.camera_topic = None
         self.client = FoxgloveClient(args.bridge, topics=[args.camera_info], on_message=self.on_message)
+        # Results go to the same bridge, or with --publish-bridge to another one (e.g. a bridge on this laptop when
+        # the car's bridge does not pass on what laptops publish).
+        self.out = self.client
+        if args.publish_bridge and args.publish_bridge != args.bridge:
+            self.out = FoxgloveClient(args.publish_bridge, topics=[], on_message=lambda *_: None)
         self.last_print, self.last_summary = 0.0, None
 
     # ---- bridge thread ----------------------------------------------------------------------------------------
@@ -112,7 +127,7 @@ class PersonFinder:
             if self.client.connected.wait(1):
                 time.sleep(1.0)  # advertisements arrive right after serverInfo
                 topics = set(self.client.advertised_topics())
-                for t in CAMERA_TOPICS:
+                for t in camera_topics(self.args.bridge):
                     if t in topics:
                         return t
         raise SystemExit(f"none of {CAMERA_TOPICS} is advertised by {self.args.bridge}; pick one with --topic")
@@ -123,13 +138,16 @@ class PersonFinder:
         args = self.args
         detector = Detector(args.model, args.conf)  # loads before connecting: first run downloads the weights
         self.client.start()
+        if self.out is not self.client:
+            self.out.start()
         if args.publish:
-            self.client.advertise(args.out_topic, "std_msgs/msg/String")
+            self.out.advertise(args.out_topic, "std_msgs/msg/String")
             if args.image_topic:
-                self.client.advertise(args.image_topic, "sensor_msgs/msg/CompressedImage")
+                self.out.advertise(args.image_topic, "sensor_msgs/msg/CompressedImage")
         self.camera_topic = self.pick_camera()
         self.client.subscribe([self.camera_topic])
-        print(f"📷 {self.camera_topic} -> persons" + (f" -> {args.out_topic}" if args.publish else ""))
+        print(f"📷 {self.camera_topic} -> persons" + (f" -> {args.out_topic}" if args.publish else "")
+              + (f" on {args.publish_bridge}" if self.out is not self.client else ""))
 
         min_dt = 1.0 / args.max_hz if args.max_hz else 0.0
         last = 0.0
@@ -146,6 +164,8 @@ class PersonFinder:
             pass
         finally:
             self.client.close()
+            if self.out is not self.client:
+                self.out.close()
 
     def process(self, detector, schema, payload, received):
         import cv2
@@ -167,12 +187,12 @@ class PersonFinder:
             header = msg["header"]
             data = {"stamp": header["stamp"]["sec"] + header["stamp"]["nanosec"] * 1e-9,
                     "frame_id": "base_link", "persons": [p.to_dict() for p in persons]}
-            self.client.publish(self.args.out_topic, self.codec.encode(
+            self.out.publish(self.args.out_topic, self.codec.encode(
                 "std_msgs/String", {"data": json.dumps(data)}))
             if self.args.image_topic:
                 ok, jpeg = cv2.imencode(".jpg", draw(img, persons), [cv2.IMWRITE_JPEG_QUALITY, 70])
                 if ok:
-                    self.client.publish(self.args.image_topic, self.codec.encode(
+                    self.out.publish(self.args.image_topic, self.codec.encode(
                         "sensor_msgs/CompressedImage", {"header": header, "format": "jpeg", "data": jpeg.tobytes()}))
         if self.args.show:
             cv2.imshow("Person Finder", draw(img, persons))
@@ -199,12 +219,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--bridge", default=os.environ.get("BITT_BRIDGE", "ws://10.42.0.1:8765"),
                         help="foxglove_bridge of the car (env BITT_BRIDGE)")
-    parser.add_argument("--topic", help=f"camera topic (default: the first of {', '.join(CAMERA_TOPICS)} that exists)")
+    parser.add_argument("--publish-bridge", default=os.environ.get("PERSON_PUBLISH_BRIDGE", ""),
+                        help="publish the results to this bridge instead (default: the same as --bridge)")
+    parser.add_argument("--topic", help="camera topic (default: /visual_slam/image_0 for a bridge on localhost, "
+                        "otherwise /preview/left/compressed)")
     parser.add_argument("--camera-info", default="/visual_slam/camera_info_0")
     parser.add_argument("--model", default=os.environ.get("PERSON_MODEL", "yolo11n.pt"), help="YOLO weights")
     parser.add_argument("--conf", type=float, default=0.4, help="minimum detector confidence")
     parser.add_argument("--person-height", type=float, default=1.70, help="assumed body height in m")
-    parser.add_argument("--max-hz", type=float, default=10.0, help="at most this many frames per second (0 = all)")
+    parser.add_argument("--max-hz", type=float, default=20.0, help="at most this many frames per second (0 = all)")
     parser.add_argument("--out-topic", default="/persons")
     parser.add_argument("--image-topic", default="/persons/image/compressed", help="'' to not publish the picture")
     parser.add_argument("--no-publish", dest="publish", action="store_false", help="only print, publish nothing")

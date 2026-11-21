@@ -1,4 +1,4 @@
-"""Copied from student_ws/src/rear_buddy/rear_buddy/cdr.py (plus sensor_msgs/Image and CameraInfo).
+"""Copied from rear_buddy/rear_buddy/cdr.py (plus sensor_msgs/Image and CameraInfo).
 
 Minimal ROS 2 message (de)serialisation without ROS: CDR, little endian, as DDS and the foxglove_bridge use it.
 

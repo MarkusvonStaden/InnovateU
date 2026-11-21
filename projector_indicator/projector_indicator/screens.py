@@ -3,7 +3,7 @@
     for s in monitors(): print(s)                      # Screen(index=0, x=0, y=0, width=1920, height=1080, primary=True)
     open_fullscreen('http://localhost:8081/', pick_screen(monitors(), None))
 
-Monitors are listed on Windows (Win32 API) and on Linux with xrandr; elsewhere the list is empty and the page opens
+Monitors are listed on Windows (Win32 API), on macOS (AppKit via osascript) and on Linux with xrandr; elsewhere the list is empty and the page opens
 on the main screen (drag it over and press F11). The page opens in Edge or Chrome as a kiosk window: no bars, no
 tabs; Alt+F4 closes it.
 """
@@ -31,6 +31,9 @@ def monitors():
     try:
         if sys.platform == 'win32':
             return _windows_monitors()
+        if sys.platform == 'darwin':
+            return _mac_monitors(subprocess.run(['osascript', '-l', 'JavaScript', '-e', _MAC_SCREENS],
+                                                capture_output=True, text=True, timeout=10).stdout)
         if shutil.which('xrandr'):
             return _xrandr_monitors(subprocess.run(['xrandr', '--query'], capture_output=True, text=True).stdout)
     except Exception:  # noqa: BLE001 - no monitor list is fine, the page then opens on the main screen
@@ -74,6 +77,22 @@ def _windows_monitors():
 
     ctypes.windll.user32.EnumDisplayMonitors(None, None, proc(callback), 0)
     return [Screen(i, *m) for i, m in enumerate(sorted(found, key=lambda m: (m[0], m[1])))]
+
+
+# NSScreen frames in points, origin bottom left of the main screen (screens[0]), y up; one line per screen.
+_MAC_SCREENS = '''ObjC.import("AppKit"); var s = $.NSScreen.screens, out = [];
+for (var i = 0; i < s.count; i++) { var f = s.objectAtIndex(i).frame;
+  out.push([f.origin.x, f.origin.y, f.size.width, f.size.height].join(" ")); } out.join("\\n")'''
+
+
+def _mac_monitors(text):
+    """osascript output -> screens with Chrome's coordinates (points, origin top left of the main screen, y down)."""
+    frames = [tuple(round(float(v)) for v in line.split()) for line in text.splitlines() if line.strip()]
+    if not frames:
+        return []
+    main_height = frames[0][3]
+    out = [(x, main_height - (y + h), w, h, i == 0) for i, (x, y, w, h) in enumerate(frames)]
+    return [Screen(i, *m) for i, m in enumerate(sorted(out, key=lambda m: (m[0], m[1])))]
 
 
 def _xrandr_monitors(text):

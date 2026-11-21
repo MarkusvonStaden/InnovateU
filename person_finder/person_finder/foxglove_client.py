@@ -1,4 +1,4 @@
-"""Copied from student_ws/src/rear_buddy/rear_buddy/foxglove_client.py; offers both subprotocols.
+"""Copied from rear_buddy/rear_buddy/foxglove_client.py; offers both subprotocols.
 
 A small client for the car's foxglove_bridge (Foxglove WebSocket protocol v1): subscribe and publish ROS topics
 over Wi-Fi from a laptop without ROS.

@@ -13,7 +13,7 @@ from projector_indicator.display_server import DisplayServer
 from projector_indicator.fake_car import FakeCar, indicator_cmd, ros2msg_schema
 from projector_indicator.foxglove_client import SUBPROTOCOL, FoxgloveClient
 from projector_indicator.indicator import PAGE, Indicator, page_url
-from projector_indicator.screens import Screen, _xrandr_monitors, browser_command, pick_screen
+from projector_indicator.screens import Screen, _mac_monitors, _xrandr_monitors, browser_command, pick_screen
 
 codec = Codec()
 
@@ -324,3 +324,11 @@ def test_two_persons_stay_apart_and_a_lost_one_fades():
     assert faded['left'] > faded['right'] > 0                       # ... it fades
     clock.t += 0.6
     assert [p['zone'] for p in tracks.current()] == []              # and both are gone after hold_s
+
+
+def test_mac_screens_to_top_left_coordinates():
+    # MacBook display plus a projector to its right whose bottom edge is 37 pt higher (AppKit: y up from the bottom)
+    screens = _mac_monitors('0 0 1728 1117\n1728 37 1920 1080\n')
+    assert screens == [Screen(0, 0, 0, 1728, 1117, True), Screen(1, 1728, 0, 1920, 1080, False)]
+    assert pick_screen(screens, None).index == 1
+    assert _mac_monitors('') == []

@@ -1,0 +1,8 @@
+# For running on your laptop without ROS (python3 -m rear_buddy.offline) and for the YOLO detector.
+ultralytics
+opencv-python
+segno
+websockets
+mcap              # replaying recorded bags
+open_clip_torch   # car brand check (CLIP)
+pytest

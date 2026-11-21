@@ -3,7 +3,7 @@
 Where do people stand in front of the car? Front camera → YOLO → position on the floor, published back to the car.
 
 Runs on a laptop **without ROS**: it talks to the car's `foxglove_bridge` over Wi-Fi, like
-[rear_buddy](../student_ws/src/rear_buddy) (whose CDR codec and bridge client it copies).
+[rear_buddy](../rear_buddy) (whose CDR codec and bridge client it copies).
 
 ```
 🚶 3 Personen (24 ms)
@@ -77,7 +77,7 @@ plausible but there is no ground truth.
 - YOLO (`yolo11n`, COCO class *person*) sometimes takes coats on chairs etc. for a person. `--conf 0.5` filters
   more, but also misses more.
 - About 25 ms per picture on an M-series Mac (MPS). The preview camera has ~5 pictures/s, so every one is used;
-  with the raw 60 Hz topic `--max-hz` (default 10) skips pictures. Never subscribe to raw images over Wi-Fi.
+  with the raw 60 Hz topic `--max-hz` (default 20) skips pictures. With a bridge on localhost (bag, Gazebo) the raw camera is the default because it is smooth; on the car the preview, because raw images are too big for Wi-Fi.
 - `--show` opens a window with the picture, `--no-publish` only prints.
 - The person's position is in the car's frame, not on a map: for map coordinates combine it with `/tf`.
 

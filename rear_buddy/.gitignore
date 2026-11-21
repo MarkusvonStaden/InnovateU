@@ -1,0 +1,5 @@
+.venv/
+*.pt
+.pytest_cache/
+rear_buddy/profile_local.py
+rear_buddy/photo_local.*

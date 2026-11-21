@@ -211,8 +211,13 @@ def run_car(display, stop, args, calibration=None):
             print(f'{topic}: {text!r}')
             indicator.on_text(text)
 
-    client = FoxgloveClient(args.url, topics, on_message=on_message).start()
-    print(f'connecting to {args.url} (on the car network?), listening to {", ".join(sorted(topics))} ... Ctrl-C to stop')
+    # --local-url: /persons and /advertisement from a bridge on this laptop (the car's bridge may not pass on what
+    # other laptops publish), the car's own topics still from the car.
+    local_topics = {t for t in (args.text_topic, args.persons_topic) if t} if args.local_url else set()
+    client = FoxgloveClient(args.url, topics - local_topics, on_message=on_message).start()
+    local = FoxgloveClient(args.local_url, local_topics, on_message=on_message).start() if local_topics else None
+    print(f'connecting to {args.url} (on the car network?), listening to {", ".join(sorted(topics - local_topics))}'
+          + (f'; to {args.local_url} for {", ".join(sorted(local_topics))}' if local else '') + ' ... Ctrl-C to stop')
     warned = False
     started = time.monotonic()
     try:
@@ -245,6 +250,8 @@ def run_car(display, stop, args, calibration=None):
             stop.wait(0.05)
     finally:
         client.close()
+        if local:
+            local.close()
 
 
 def ask_to_quit(port):
@@ -303,6 +310,8 @@ def main():
                    help="std_msgs/String topic whose message is written onto the ground ('' for none)")
     p.add_argument('--text', default='', help='text to show until the first message comes (and in demo mode)')
     p.add_argument('--text-s', type=float, default=0.0, help='hide a message after this many seconds (0: keep it)')
+    p.add_argument('--local-url', default='',
+                   help='a second bridge (e.g. ws://localhost:8765 on this laptop) for --text-topic and --persons-topic')
     p.add_argument('--persons-topic', default='/persons',
                    help="std_msgs/String with the detected persons as JSON: a soft red patch at their place ('' for none)")
     p.add_argument('--steer-topic', default='/steer_state',

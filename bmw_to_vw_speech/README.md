@@ -37,7 +37,7 @@ In parallel to the speech (it never waits for this), a small text model (`gpt-4.
 | finds the own car too slow (not someone else's) | 📢 Porsche | `/advertisement`: `"Porsche"` |
 
 The topics are published on the car through its Foxglove bridge (`ws://10.42.0.1:8765`), with no ROS on the laptop,
-the same way as [rear_buddy](../student_ws/src/rear_buddy). Watch them in Foxglove or with
+the same way as [rear_buddy](../rear_buddy). Watch them in Foxglove or with
 `ros2 topic echo /Swearword`. Without the car the console lines still appear and the bridge just keeps retrying
 (`--no-bridge` silences that). To get topics **and** the OpenAI API at the same time, the laptop needs the `BITT`
 Wi-Fi plus a second link with internet (Ethernet, USB tethering).

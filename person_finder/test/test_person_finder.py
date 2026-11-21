@@ -102,3 +102,11 @@ def test_bearing_matches_pixel():
     p = locate((CAM.cx + CAM.fx - 5, 100, CAM.cx + CAM.fx + 5, 200), CAM)
     assert p.angle_deg == pytest.approx(-45, abs=0.5)
     assert math.isfinite(p.distance)
+
+
+def test_local_bridge_prefers_smooth_raw_camera():
+    from person_finder.__main__ import camera_topics
+
+    assert camera_topics("ws://localhost:8765")[0] == "/visual_slam/image_0"
+    assert camera_topics("ws://127.0.0.1:8765")[0] == "/visual_slam/image_0"
+    assert camera_topics("ws://10.42.0.1:8765")[0] == "/preview/left/compressed"

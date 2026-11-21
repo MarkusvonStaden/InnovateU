@@ -1,6 +1,6 @@
 """Publish ROS topics on the car through its foxglove_bridge, without ROS on the laptop.
 
-Publish-only version of rear_buddy's client (student_ws/src/rear_buddy/rear_buddy/foxglove_client.py):
+Publish-only version of rear_buddy's client (rear_buddy/rear_buddy/foxglove_client.py):
 
     bridge = FoxglovePublisher("ws://10.42.0.1:8765").start()
     bridge.advertise("/advertisement", STRING)

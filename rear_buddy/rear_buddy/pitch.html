@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rear Buddy · Job</title>
+<!-- The job intro for a kiosk browser window: empty asphalt while nothing happens, the intro while the scene is
+     fancy_car (a premium car behind us). Its driver reads number plates all day, so the name is one.
+     Data from /pitch.json, live scene from /events. ?demo=1 shows it all the time.
+     No web fonts or CDNs: the car's Wi-Fi has no internet. DIN ships with macOS (DIN Alternate) and Windows
+     (Bahnschrift). -->
+<style>
+  :root {
+    --asphalt: #3a3e42;
+    --line: #e9e7df;          /* road marking white: text on the asphalt */
+    --muted: #b4b8bb;
+    --plate: #f6f6f1;
+    --ink: #000;
+    --eu: #003399;
+    --star: #ffcc00;
+    --din: "DIN Alternate", "Bahnschrift", "DIN Condensed", "Arial Narrow", Arial, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--asphalt); color: var(--line); overflow: hidden; cursor: none; }
+  body { font-family: var(--din); -webkit-font-smoothing: antialiased; }
+
+  .stage {
+    height: 100%;
+    display: grid;
+    grid-template-rows: 1fr auto;
+    gap: 6vh;
+    padding: 9vh 7vw 8vh;
+    visibility: hidden;
+  }
+  .stage.on { visibility: visible; }
+
+  /* ---- the plate: the one loud thing ------------------------------------------------------------------- */
+  .plate {
+    align-self: center;
+    justify-self: center;
+    width: min(86vw, 150vh);
+    aspect-ratio: 520 / 110;              /* German plate proportions */
+    display: grid;
+    grid-template-columns: 8.5% 1fr;
+    background: var(--plate);
+    border: max(4px, .55vw) solid var(--ink);
+    border-radius: max(8px, 1vw);
+    overflow: hidden;
+  }
+  .eu {
+    background: var(--eu);
+    display: grid; grid-template-rows: 1fr auto; justify-items: center; align-items: center;
+    padding: 8% 0 10%;
+  }
+  .eu svg { width: 64%; height: auto; }
+  .eu b { color: #fff; font-weight: 700; font-size: min(3.2vw, 5.6vh); line-height: 1; }
+  .plate-text {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink);
+    font-weight: 700;
+    font-size: min(10.5vw, 18.5vh);
+    letter-spacing: .04em;
+    line-height: 1;
+    white-space: nowrap;
+    padding-right: 4%;
+  }
+
+  /* ---- the quiet part ---------------------------------------------------------------------------------- */
+  .about {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: end;
+    gap: 3.2vw;
+  }
+  .photo {
+    width: 24vh; aspect-ratio: 1; object-fit: cover; display: block;
+    border-radius: 6px;
+    background: #2f3236;
+  }
+  .initials {
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 11vh; color: var(--muted);
+  }
+  .intro { font-size: min(3.6vw, 6.4vh); font-weight: 700; line-height: 1.12; max-width: 24ch; }
+  .skills { margin-top: .7em; font-size: min(1.9vw, 3.4vh); color: var(--muted); line-height: 1.3; max-width: 46ch; }
+  .contact { display: grid; grid-template-columns: auto auto; align-items: end; gap: 1.4vw; }
+  .contact[hidden] { display: none; }
+  .qr { width: 22vh; aspect-ratio: 1; background: #fff; padding: 1.2vh; border-radius: 4px; }
+  .qr img { width: 100%; height: 100%; display: block; }
+  .cta { font-size: min(1.8vw, 3.2vh); line-height: 1.3; max-width: 17ch; }
+  .cta span { color: var(--muted); display: block; }
+
+  /* ---- one moment: the plate is stamped on ------------------------------------------------------------- */
+  .on .plate { animation: stamp .55s cubic-bezier(.2, .9, .3, 1.2) both; }
+  .on .about { animation: appear .4s .35s ease-out both; }
+  @keyframes stamp { from { transform: scale(1.08) rotate(-1.2deg); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+
+  /* portrait screens (a tablet in the rear window) */
+  @media (max-aspect-ratio: 1/1) {
+    .stage { grid-template-rows: auto auto; gap: 6vh; padding: 7vh 6vw; align-content: center; }
+    .plate { width: 88vw; }
+    .plate-text { font-size: 12vw; }
+    .eu b { font-size: 3.6vw; }
+    .about { grid-template-columns: auto 1fr; align-items: start; }
+    .contact { grid-column: 1 / -1; justify-content: start; margin-top: 3vh; }
+    .photo { width: 26vw; }
+    .intro { font-size: 6vw; }
+    .skills { font-size: 3.4vw; }
+    .qr { width: 30vw; }
+    .cta { font-size: 3.4vw; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .on .plate, .on .about { animation: none; }
+  }
+</style>
+</head>
+<body>
+<main class="stage" id="stage" aria-live="polite">
+  <div class="plate" role="img" id="plate">
+    <div class="eu">
+      <svg viewBox="-12 -12 24 24" aria-hidden="true" id="stars"></svg>
+      <b>D</b>
+    </div>
+    <div class="plate-text" id="plate-text"></div>
+  </div>
+  <section class="about">
+    <div id="photo"></div>
+    <div>
+      <p class="intro" id="intro"></p>
+      <p class="skills" id="skills"></p>
+    </div>
+    <div class="contact" id="contact" hidden>
+      <div class="qr"><img src="/qr.svg" alt="QR-Code"></div>
+      <p class="cta">Beifahrer: einmal scannen, bitte.<span id="qrlabel"></span></p>
+    </div>
+  </section>
+</main>
+<script>
+  const demo = new URLSearchParams(location.search).has('demo');
+  const stage = document.getElementById('stage');
+  const el = id => document.getElementById(id);
+
+  // the ring of 12 stars on the blue EU strip
+  el('stars').innerHTML = Array.from({ length: 12 }, (_, i) => {
+    const a = i * Math.PI / 6;
+    return `<circle cx="${(8 * Math.sin(a)).toFixed(2)}" cy="${(-8 * Math.cos(a)).toFixed(2)}" r="1.5" fill="var(--star)"/>`;
+  }).join('');
+
+  function fill(card) {
+    const name = card.first_name || '';
+    const plate = card.plate || [name, card.age].filter(Boolean).join(' ');
+    el('plate-text').textContent = plate.toUpperCase();
+    el('plate').setAttribute('aria-label', plate);
+    // one plain sentence: "Hi, ich bin Sascha, 29, Softwareentwickler."
+    el('intro').textContent = [`${card.greeting || "Hi, I'm"} ${name}`, card.age, card.role].filter(Boolean).join(', ') + '.';
+    el('skills').textContent = (card.skills || []).join(', ');
+    el('qrlabel').textContent = card.qr_label || '';
+    if (card.photo) {
+      const img = new Image(); img.src = '/photo'; img.alt = name; img.className = 'photo';
+      el('photo').replaceChildren(img);
+    } else {
+      const d = document.createElement('div'); d.className = 'photo initials';
+      d.textContent = name.trim().slice(0, 1).toUpperCase() || '?';
+      el('photo').replaceChildren(d);
+    }
+  }
+
+  function show(on) {
+    if (on === stage.classList.contains('on')) return;
+    if (on) { void stage.offsetWidth; }     // restart the stamp each time
+    stage.classList.toggle('on', on);
+  }
+
+  fetch('/pitch.json').then(r => r.json()).then(fill).catch(() => {});
+  fetch('/qr.svg').then(r => { el('contact').hidden = !r.ok; }).catch(() => {});
+
+  if (demo) {
+    show(true);
+  } else {
+    const events = new EventSource('/events');   // reconnects by itself
+    events.onmessage = e => { try { show(JSON.parse(e.data).scene === 'fancy_car'); } catch (_) {} };
+  }
+</script>
+</body>
+</html>
