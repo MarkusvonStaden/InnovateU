@@ -26,6 +26,7 @@ DEFINITIONS = {
     'std_msgs/Header': 'builtin_interfaces/Time stamp\nstring frame_id',
     'sensor_msgs/CompressedImage': 'std_msgs/Header header\nstring format\nuint8[] data',
     'std_msgs/String': 'string data',
+    'std_msgs/Bool': 'bool data',
     # Services the projection calls to stop the car (an empty request still carries one byte in ROS 2).
     'std_srvs/Trigger_Request': 'uint8 structure_needs_at_least_one_member',
     'std_srvs/Trigger_Response': 'bool success\nstring message',

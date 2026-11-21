@@ -27,8 +27,8 @@ from .cdr import DEFINITIONS, Codec
 from .foxglove_client import OP_MESSAGE_DATA, OP_SERVICE_CALL, OP_SERVICE_RESPONSE, SUBPROTOCOL
 
 STATE_TOPIC, CMD_TOPIC, TEXT_TOPIC, PERSONS_TOPIC = '/lights_state', '/lights_cmd', '/advertisement', '/persons'
-STATE_CHANNEL, TEXT_CHANNEL, PERSONS_CHANNEL, STEER_CHANNEL, ODOM_CHANNEL = 1, 2, 3, 4, 5
-ODOM_TOPIC = '/wheel_odom'
+STATE_CHANNEL, TEXT_CHANNEL, PERSONS_CHANNEL, STEER_CHANNEL, ODOM_CHANNEL, PACMAN_CHANNEL = 1, 2, 3, 4, 5, 6
+ODOM_TOPIC, PACMAN_TOPIC = '/wheel_odom', '/pacman'
 STEER_TOPIC, STOP_SERVICE, STOP_SERVICE_ID = '/steer_state', '/control_room/cancel_navigation', 100
 CAR_FRONT_M = 1.05  # base_link x of the front bumper
 KEYS = {'o': 0, 'l': 1, 'r': 2, 'h': 3}   # LightsCmd.MODE_*
@@ -127,7 +127,9 @@ class FakeCar:
             {'id': STEER_CHANNEL, 'topic': STEER_TOPIC, 'encoding': 'cdr', 'schemaName': 'car_interfaces/msg/SteerState',
              'schemaEncoding': 'ros2msg', 'schema': ros2msg_schema('car_interfaces/SteerState')},
             {'id': ODOM_CHANNEL, 'topic': ODOM_TOPIC, 'encoding': 'cdr', 'schemaName': 'car_interfaces/msg/WheelOdom',
-             'schemaEncoding': 'ros2msg', 'schema': ros2msg_schema('car_interfaces/WheelOdom')}]}))
+             'schemaEncoding': 'ros2msg', 'schema': ros2msg_schema('car_interfaces/WheelOdom')},
+            {'id': PACMAN_CHANNEL, 'topic': PACMAN_TOPIC, 'encoding': 'cdr', 'schemaName': 'std_msgs/msg/String',
+             'schemaEncoding': 'ros2msg', 'schema': 'string data'}]}))
         ws.send(json.dumps({'op': 'advertiseServices', 'services': [
             {'id': STOP_SERVICE_ID, 'name': STOP_SERVICE, 'type': 'std_srvs/srv/Trigger',
              'request': {'encoding': 'cdr', 'schemaName': 'std_srvs/srv/Trigger_Request', 'schemaEncoding': 'ros2msg',
@@ -223,10 +225,15 @@ def main():
         else:
             print('type l (left), r (right), h (hazard), o (off) and Enter; "a Some text" publishes /advertisement; '
                   '"p 2.5 -0.3" a person at x=2.5 m, y=-0.3 m (base_link) on /persons for 3 s; "s 0.3" steers '
-                  '(rad, + left); "v 0.5" drives at 0.5 m/s (/wheel_odom, - = backwards, v 0 stops); q quits')
+                  '(rad, + left); "v 0.5" drives at 0.5 m/s (/wheel_odom, - = backwards, v 0 stops); "g on" / "g off" '
+                  'switches the dot game (/pacman); q quits')
             for line in sys.stdin:
                 if line.lower().startswith('a '):
                     car.say(line[2:].strip())
+                    continue
+                if line.lower().startswith('g '):
+                    car.say('enable' if line.split()[1].lower() in ('on', 'enable', '1') else 'disable',
+                            channel=PACMAN_CHANNEL)
                     continue
                 if line.lower().startswith('v '):
                     try:

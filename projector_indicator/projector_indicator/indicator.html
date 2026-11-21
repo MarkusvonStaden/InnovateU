@@ -73,6 +73,14 @@
      full resolution whenever the path moved, and that made everything else stutter. */
   #corridor { position: absolute; left: 0; top: 0; pointer-events: none; display: none; }
   #corridor.on { display: block; }
+  /* The dot game (/pacman enable): it alone is shown, everything else is hidden until it is switched off again. */
+  #game, #score { position: absolute; left: 0; top: 0; pointer-events: none; display: none; }
+  .pacman #game, .pacman #score { display: block; }
+  .pacman #box, .pacman #ad, .pacman #corridor, .pacman #persons { display: none !important; }
+  #score { text-align: center; font-weight: 900; color: #fff; line-height: 1; white-space: nowrap; }
+  #score .label { display: block; font-size: 0.32em; letter-spacing: 0.2em; color: #3cf; }
+  #score.power { color: #ff4fd8; }
+  #score.power .label { color: #ffe14f; }
   #info { bottom: 2%; left: 50%; transform: translateX(-50%); font-size: 5cqmin !important; font-weight: 600 !important;
     opacity: 0.8; text-align: center; }
 </style>
@@ -85,6 +93,8 @@
        x to the car's right, y towards the car, (0, 0) = front left corner of the light patch's bounding box. -->
   <div id="ground"></div>
   <canvas id="corridor" aria-hidden="true"></canvas>
+  <canvas id="game" aria-hidden="true"></canvas>
+  <div id="score"><span class="label">PUNKTE</span><span id="points">0</span></div>
   <div id="persons"></div>
   <div id="ad">
     <div id="nav">
@@ -411,6 +421,144 @@
     }
   }
 
+  // ---- The dot game (topic /pacman: enable / disable) -------------------------------------------------------------
+  // The car is the eater: a chomping mouth at the edge of the light next to the car. Ahead of it, rows of dots lie on
+  // the ground between two neon walls, pinned in the odometry frame like the advertisement; driving over them eats
+  // them at the mouth: points and a burst of sparks. Every few metres a big orb: power mode for 8 s (the walls cycle
+  // through the colours, points count double). New rows keep coming in front, along the way the car is heading, so
+  // the lane follows its turns. Without odometry (or in --demo) the car "drives" virtually, so the game runs anyway.
+  const GAME_MM_PER_PX = 4, ROW_M = 0.3, LANE_M = 0.24, WALL_M = 0.44, VIRTUAL_MPS = 0.6, POWER_MS = 8000;
+  let game = null;
+  function placeGame(g, w, h) {   // on layout only
+    const canvas = $('game');
+    place(canvas, 0, 0, w, h);
+    canvas.width = Math.ceil(w / GAME_MM_PER_PX); canvas.height = Math.ceil(h / GAME_MM_PER_PX);
+    if (g) {
+      const [bx, by, bw, bh] = g.box_mm, score = $('score');
+      place(score, bx, by, bw, bh);
+      score.style.fontSize = Math.min(bh * 0.55, bw * 0.22) + 'px';
+      score.style.paddingTop = bh * 0.15 + 'px';
+    }
+    game = null;   // a new layout: start again
+  }
+  function gamePose(now) {
+    const real = carPose(now);
+    if (real) return { pose: real, source: 'odometry' };
+    const v = game && game.source === 'virtual' ? game.virtual : { x: 0, y: 0, yaw: 0 };
+    const dt = game ? Math.min(0.1, (now - game.last) / 1000) : 0;
+    return { pose: { x: v.x + VIRTUAL_MPS * dt, y: v.y, yaw: 0 }, source: 'virtual' };
+  }
+  function lightReach(g) {   // base_link x of the light's near and far edge
+    const xs = g.footprint_mm.map(p => toBase(p, g, state.light || {}).x);
+    return [Math.min(...xs), Math.max(...xs)];
+  }
+  function addRow(pose, at) {   // a row of dots (and the walls' points) `at` metres ahead of the car, across its heading
+    const c = Math.cos(pose.yaw), s = Math.sin(pose.yaw), i = game.rowCount++;
+    const ox = pose.x + c * at, oy = pose.y + s * at;
+    const across = (d) => [ox - s * d, oy + c * d];
+    const dots = [];
+    if (i % 14 === 13) dots.push({ p: across(0), orb: true });
+    else if (i % 14 >= 6 && i % 14 <= 9) dots.push({ p: across(((i % 2) ? 1 : -1) * LANE_M * 0.5) });   // zigzag
+    else for (const d of [-LANE_M, 0, LANE_M]) dots.push({ p: across(d) });
+    game.rows.push({ dots, left: across(WALL_M), right: across(-WALL_M), centre: [ox, oy] });
+  }
+  function toCar(pose, [x, y]) {   // odometry frame -> base_link
+    const dx = x - pose.x, dy = y - pose.y, c = Math.cos(pose.yaw), s = Math.sin(pose.yaw);
+    return { x: c * dx + s * dy, y: -s * dx + c * dy };
+  }
+  function runGame(now) {
+    const g = geometry && geometry.g;
+    if (!g) return;
+    const light = state.light || {}, [near, far] = lightReach(g), mouth = near + 0.32;
+    const { pose, source } = gamePose(now);
+    if (!game || game.source !== source) {
+      game = { score: 0, rows: [], sparks: [], rowCount: 0, power: 0, source, virtual: pose, last: now, shown: -1 };
+      for (let at = mouth + 0.35; at < far + 0.6; at += ROW_M) addRow(pose, at);
+    }
+    if (source === 'virtual') game.virtual = pose;
+    const dt = Math.min(0.1, (now - game.last) / 1000);
+    game.last = now;
+    // new rows in front, along the way the car is heading
+    const tip = game.rows.length ? toCar(pose, game.rows[game.rows.length - 1].centre).x : mouth;
+    if (tip < far + 0.6) addRow(pose, Math.max(tip + ROW_M, mouth + 0.35));
+    // eat what reaches the mouth (the whole width of the car), drop what is behind it
+    const power = now < game.power;
+    for (const row of game.rows) {
+      for (const dot of row.dots) {
+        if (dot.eaten) continue;
+        const b = toCar(pose, dot.p);
+        if (b.x <= mouth + 0.05 && b.x > mouth - 0.4 && Math.abs(b.y) <= CAR_WIDTH_M / 2) {
+          dot.eaten = true;
+          game.score += (dot.orb ? 50 : 10) * (power ? 2 : 1);
+          game.chomp = now;
+          if (dot.orb) game.power = now + POWER_MS;
+          for (let k = 0; k < (dot.orb ? 24 : 8); k++) {
+            const a = Math.random() * Math.PI * 2, sp = 0.4 + Math.random() * (dot.orb ? 1.6 : 0.8);
+            game.sparks.push({ p: [...dot.p], v: [Math.cos(a) * sp, Math.sin(a) * sp], born: now, orb: dot.orb });
+          }
+        }
+      }
+    }
+    game.rows = game.rows.filter(row => toCar(pose, row.centre).x > near - 1.2);
+    game.sparks = game.sparks.filter(sp => now - sp.born < 600);
+    for (const sp of game.sparks) { sp.p[0] += sp.v[0] * dt; sp.p[1] += sp.v[1] * dt; }
+    drawGame(g, pose, now, mouth, light, power);
+    if (game.score !== game.shown) $('points').textContent = game.shown = game.score;
+    $('score').classList.toggle('power', power);
+  }
+  function drawGame(g, pose, now, mouth, light, power) {
+    const canvas = $('game'), ctx = canvas.getContext('2d'), m = 1 / GAME_MM_PER_PX;
+    const at = (p) => { const [wx, wy] = toWorld(toCar(pose, p), g, light); return [wx * m, wy * m]; };
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.lineCap = ctx.lineJoin = 'round';
+    // the walls: a double neon line on each side, through the rows' wall points
+    const hue = power ? (now / 8) % 360 : 220;
+    for (const side of ['left', 'right']) {
+      const pts = game.rows.map(row => at(row[side]));
+      if (pts.length < 2) continue;
+      for (const [width, colour] of [[70, `hsla(${hue}, 100%, 55%, 0.35)`], [40, `hsl(${hue}, 100%, 60%)`], [14, '#000']]) {
+        ctx.beginPath();
+        pts.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x, y));
+        ctx.lineWidth = width * m; ctx.strokeStyle = colour; ctx.stroke();
+      }
+    }
+    // the dots and orbs
+    const pulse = 0.8 + 0.2 * Math.sin(now / 120);
+    for (const row of game.rows) {
+      for (const dot of row.dots) {
+        if (dot.eaten) continue;
+        const [x, y] = at(dot.p), r = (dot.orb ? 85 * pulse : 34) * m;
+        ctx.beginPath(); ctx.arc(x, y, r * 1.9, 0, Math.PI * 2);
+        ctx.fillStyle = dot.orb ? 'rgba(255, 79, 216, 0.25)' : 'rgba(255, 220, 160, 0.18)'; ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = dot.orb ? '#ff4fd8' : '#ffe9c4'; ctx.fill();
+      }
+    }
+    // sparks
+    for (const sp of game.sparks) {
+      const [x, y] = at(sp.p), life = 1 - (now - sp.born) / 600;
+      ctx.beginPath(); ctx.arc(x, y, (sp.orb ? 16 : 10) * m * life + 0.8, 0, Math.PI * 2);
+      ctx.fillStyle = sp.orb ? `rgba(255, 79, 216, ${life})` : `rgba(255, 170, 40, ${life})`; ctx.fill();
+    }
+    // the eater: a green disc at the edge of the light, its mouth (towards the dots) snapping while it eats
+    const [cx, cy] = toWorld({ x: mouth, y: 0 }, g, light).map(v => v * m), r = 210 * m;
+    const eating = game.chomp && now - game.chomp < 400;
+    const open = eating ? 0.08 + 0.55 * Math.abs(Math.sin(now / 70)) : 0.12 + 0.1 * Math.abs(Math.sin(now / 400));
+    const ahead = -Math.PI / 2;   // world up = ahead of the car
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, ahead + open, ahead - open + Math.PI * 2);
+    ctx.closePath();
+    ctx.fillStyle = power ? `hsl(${hue}, 100%, 60%)` : '#2bff88'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + r * 0.42, cy - r * 0.05, r * 0.11, 0, Math.PI * 2);   // an eye on its right
+    ctx.fillStyle = '#000'; ctx.fill();
+    if (fade) {   // soft towards the edge of the light, like the car path
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(fade, 0, 0, canvas.width, canvas.height);
+    }
+  }
+
   let shownAd = '';
   function showAd(ad) {
     const key = JSON.stringify(ad || null);
@@ -482,6 +630,7 @@
     pin = null;        // pinned anew at its (new) place
     place($('persons'), 0, 0, w, h);
     placeCorridor(g, w, h);
+    placeGame(g, w, h);
     geometry = { g, w, h };
     fittedAd = null;   // the card may have a new size
     grid.style.setProperty('--line', line + 'px');
@@ -509,6 +658,7 @@
       fitText($('dist'));
       fitText($('title'));
     }
+    document.body.classList.toggle('pacman', !!state.pacman);
     showCorridor(g);
     showPersons(g);
     onPose(state.pose, performance.now());
@@ -549,6 +699,8 @@
     }
     glideSteer(now);
     stickAd(now);
+    if (state.pacman) runGame(now);
+    else if (game) game = null;   // switched off: a new game next time
     requestAnimationFrame(frame);
   }
 

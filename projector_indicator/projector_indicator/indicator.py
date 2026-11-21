@@ -176,10 +176,20 @@ def load_calibration(path):
     return cal
 
 
-def run_demo(display, stop, period_ms, text=''):
+ON_WORDS = {'enable', 'enabled', 'on', 'true', '1', 'start', 'yes'}
+OFF_WORDS = {'disable', 'disabled', 'off', 'false', '0', 'stop', 'no'}
+
+
+def parse_switch(text):
+    """'enable' / 'disable' (or on / off, true / false, 1 / 0, start / stop) -> True / False; None for anything else."""
+    word = str(text).strip().lower()
+    return True if word in ON_WORDS else False if word in OFF_WORDS else None
+
+
+def run_demo(display, stop, period_ms, text='', pacman=False):
     for direction, seconds in itertools.cycle(DEMO):
         display.set_state({'direction': direction, 'period_ms': period_ms, 'live': True, 'failsafe': False,
-                           'text': text, 'ad': advert(text)})
+                           'text': text, 'ad': advert(text), 'pacman': pacman})
         print(f'demo: {direction}')
         if stop.wait(seconds):
             return
@@ -194,14 +204,26 @@ def run_car(display, stop, args, calibration=None):
     ground = Ground(calibration, args.light_start_m, args.light_offset_m) if calibration else None
     steer = {'rad': None, 'raw': 0.0, 'at': None, 'glided': 0.0}
     odometry = Odometry()
+    game = {'on': args.pacman}   # the dot game (/pacman): while it runs the page shows nothing else
     indicator = Indicator(args.stale_s, text=args.text, text_s=args.text_s, persons_s=args.persons_s)
     type_name = TYPES[args.topic]
     shown = {}
     light = {'start_m': args.light_start_m, 'offset_m': args.light_offset_m}
-    topics = {args.topic} | {t for t in (args.text_topic, args.persons_topic, args.steer_topic, args.odom_topic) if t}
+    topics = {args.topic} | {t for t in (args.text_topic, args.persons_topic, args.steer_topic, args.odom_topic,
+                                         args.pacman_topic) if t}
 
-    def on_message(topic, payload, _channel):
-        if topic == args.topic:
+    def on_message(topic, payload, channel):
+        if topic == args.pacman_topic:
+            if 'Bool' in (channel or {}).get('schemaName', ''):
+                on = codec.decode('std_msgs/Bool', payload)['data']
+            else:
+                on = parse_switch(codec.decode('std_msgs/String', payload)['data'])
+            if on is None:
+                print(f'{topic}: expected enable or disable')
+            elif on != game['on']:
+                game['on'] = bool(on)
+                print(f"game {'on: nothing else is shown' if on else 'off: back to the indicator'}")
+        elif topic == args.topic:
             indicator.on_lights(codec.decode(type_name, payload))
         elif topic == args.persons_topic:
             indicator.on_persons(codec.decode('std_msgs/String', payload)['data'])
@@ -218,7 +240,8 @@ def run_car(display, stop, args, calibration=None):
 
     # --local-url: /persons and /advertisement from a bridge on this laptop (the car's bridge may not pass on what
     # other laptops publish), the car's own topics still from the car.
-    local_topics = {t for t in (args.text_topic, args.persons_topic) if t} if args.local_url else set()
+    local_topics = ({t for t in (args.text_topic, args.persons_topic, args.pacman_topic) if t} if args.local_url
+                    else set())
     client = FoxgloveClient(args.url, topics - local_topics, on_message=on_message).start()
     local = FoxgloveClient(args.local_url, local_topics, on_message=on_message).start() if local_topics else None
     print(f'connecting to {args.url} (on the car network?), listening to {", ".join(sorted(topics - local_topics))}'
@@ -241,6 +264,7 @@ def run_car(display, stop, args, calibration=None):
                                  if has_steer and ground else None)
             # the car's motion: the page pins the advertisement to the ground with it
             state['pose'] = odometry.pose(now) if state['live'] else None
+            state['pacman'] = game['on']
             if state != shown:
                 if state['direction'] != shown.get('direction') or state['live'] != shown.get('live'):
                     print(f"indicator: {state['direction']}" + ('' if state['live'] else ' (no data from the car)'))
@@ -326,6 +350,10 @@ def main():
     p.add_argument('--odom-topic', default='/wheel_odom',
                    help="car_interfaces/WheelOdom: the advertisement stays put on the ground while the car drives ('' for "
                         "none: it rides along)")
+    p.add_argument('--pacman-topic', default='/pacman',
+                   help="std_msgs/String enable / disable (or std_msgs/Bool): the dot game instead of everything else "
+                        "('' for none)")
+    p.add_argument('--pacman', action='store_true', help='start with the dot game on (also in --demo)')
     p.add_argument('--persons-s', type=float, default=1.0,
                    help='fade a person out over this long when the detection no longer reports them')
     p.add_argument('--light-start-m', type=float, default=1.05,
@@ -369,7 +397,7 @@ def main():
 
     try:
         if args.demo:
-            run_demo(display, stop, args.period_ms, args.text)
+            run_demo(display, stop, args.period_ms, args.text, args.pacman)
         else:
             run_car(display, stop, args, calibration)
     except KeyboardInterrupt:
