@@ -1,0 +1,23 @@
+# Fake car for BMWtoVWSpeech, works with Docker Desktop on macOS/Windows (no host networking needed):
+#
+#   docker compose -f sim/docker-compose.yml up --build -d
+#   uv run bmw-to-vw-speech --bridge ws://localhost:8765
+#   docker compose -f sim/docker-compose.yml exec fake-bitt ros2 topic echo /Swearword
+#
+# With a recorded bag from bags/:  BAG=<name> docker compose -f sim/docker-compose.yml up -d
+services:
+  fake-bitt:
+    build:
+      context: ../..
+      dockerfile: bmw_to_vw_speech/sim/Dockerfile
+    image: bmw-to-vw-speech-fake-bitt
+    ports:
+      - "8765:8765"
+    environment:
+      BAG: ${BAG:-}
+      BAG_ARGS: ${BAG_ARGS:-}
+      # Isolated from any real car on the same network.
+      ROS_DOMAIN_ID: "77"
+      ROS_AUTOMATIC_DISCOVERY_RANGE: LOCALHOST
+    volumes:
+      - ../../bags:/bags:ro

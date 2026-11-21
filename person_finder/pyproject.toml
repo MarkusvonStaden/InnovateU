@@ -1,0 +1,26 @@
+[project]
+name = "person-finder"
+version = "0.1.0"
+description = "Where do people stand in front of the car? Front camera via foxglove_bridge -> YOLO -> floor position"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "websockets>=14",
+    "python-dotenv>=1.0",
+    "numpy>=1.26",
+    "opencv-python>=4.9",
+    "ultralytics>=8.3",
+]
+
+[project.scripts]
+person-finder = "person_finder.__main__:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]

@@ -1,0 +1,3 @@
+*
+!ros_ws/src/car_interfaces
+!bmw_to_vw_speech/sim/entrypoint.sh

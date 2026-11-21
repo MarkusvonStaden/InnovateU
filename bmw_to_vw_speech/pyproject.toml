@@ -1,0 +1,24 @@
+[project]
+name = "bmw-to-vw-speech"
+version = "0.1.0"
+description = "Aggressive speech in the car in, friendly speech out, via GPT-Realtime"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "websockets>=14",
+    "sounddevice>=0.5",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+bmw-to-vw-speech = "bmw_to_vw_speech.__main__:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
